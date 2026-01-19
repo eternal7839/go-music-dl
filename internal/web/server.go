@@ -16,6 +16,10 @@ import (
 	"github.com/guohuiyuan/music-lib/model"
 	"github.com/guohuiyuan/music-lib/soda"
 	"github.com/guohuiyuan/music-lib/kuwo"
+	"github.com/guohuiyuan/music-lib/netease"
+	"github.com/guohuiyuan/music-lib/qq"
+	"github.com/guohuiyuan/music-lib/kugou"
+	"github.com/guohuiyuan/music-lib/qianqian"
 )
 
 //go:embed templates/*
@@ -102,10 +106,17 @@ func Start(port string) {
 		// 根据源获取歌词
 		switch source {
 		case "soda":
-			lrc, err = soda.GetLyric(id)
+			lrc, err = soda.GetLyrics(&model.Song{ID: id, Source: source})
 		case "kuwo":
-			lrc, err = kuwo.GetLyric(id)
-		// 后续可以继续添加 case "netease": ...
+			lrc, err = kuwo.GetLyrics(&model.Song{ID: id, Source: source})
+		case "netease":
+			lrc, err = netease.GetLyrics(&model.Song{ID: id, Source: source})
+		case "qq":
+			lrc, err = qq.GetLyrics(&model.Song{ID: id, Source: source})
+		case "kugou":
+			lrc, err = kugou.GetLyrics(&model.Song{ID: id, Source: source})
+		case "qianqian":
+			lrc, err = qianqian.GetLyrics(&model.Song{ID: id, Source: source})
 		default:
 			lrc = "[00:00.00] 暂不支持该源歌词"
 		}

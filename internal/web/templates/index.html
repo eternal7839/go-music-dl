@@ -209,39 +209,69 @@
             #waifu { display: none; } 
         }
 
-        /* [关键修改] APlayer 歌词美化样式 - 修复版 */
-        
-        /* 1. 调整歌词容器 */
+        /* =========================================
+           [高级质感歌词] 聚光灯 + 磨砂效果 + 渐变流光
+           ========================================= */
+
+        /* 1. 歌词容器：增加上下边缘的柔和遮罩 */
         .aplayer.aplayer-fixed .aplayer-lrc {
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); 
-            margin-bottom: 10px; 
-            padding-bottom: 10px; /* 增加底部空间 */
-            overflow: visible !important; /* 尝试允许内容溢出，防止切边 */
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            text-shadow: none !important; /* 去掉默认生硬的阴影 */
+            /* 核心：使用 mask 遮罩实现上下边缘淡入淡出 */
+            -webkit-mask-image: linear-gradient(to bottom, 
+                transparent 0%, 
+                black 10%, 
+                black 90%,  /* 改成 90% 或 95%，让底部可视区域更大 */
+                transparent 100%
+            );
+            mask-image: linear-gradient(to bottom, 
+                transparent 0%, 
+                black 10%, 
+                black 90%,  /* 改成 90% 或 95%，让底部可视区域更大 */
+                transparent 100%
+            );
         }
 
-        /* 2. 普通歌词样式 (未播放行) */
+        /* --- 歌词逻辑重构 --- */
+
+        /* 1. 基础样式（这实际上变成了"过去歌词"的样式，因为会被后面覆盖） */
         .aplayer .aplayer-lrc p {
-            font-size: 16px !important;       
-            color: #ccc !important;           /*稍微改亮一点，防切边看不清*/
-            line-height: 30px !important;     /* [修复] 增加行高，防止拥挤 */
+            font-size: 16px !important;
+            line-height: 32px !important;
             font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif !important;
-            opacity: 0.8;                     
-            transition: all 0.3s ease;
-            padding: 0 !important;            /* 重置 padding */
-            margin: 0 !important;             /* 重置 margin */
+            color: #000 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            font-weight: 400 !important;
+            
+            /* 【过去歌词】：极低透明度 + 模糊，达到"不显现"的效果 */
+            opacity: 0.1 !important; 
+            filter: blur(1px);       
+            transform: scale(0.95);
+            transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
         }
 
-        /* 3. 当前播放行样式 (高亮) */
+        /* 2. 【未来歌词】：位于当前行之后的兄弟元素 */
+        /* 使用 ~ 选择器选中当前行之后的所有 p 标签 */
+        .aplayer .aplayer-lrc p.aplayer-lrc-current ~ p {
+            opacity: 0.5 !important; /* 未来歌词：半透明，可见但不如当前行抢眼 */
+            filter: blur(0px);       /* 未来歌词不模糊，方便阅读 */
+        }
+
+        /* 3. 【当前歌词】：高亮、流光 */
         .aplayer .aplayer-lrc p.aplayer-lrc-current {
-            font-size: 24px !important;       /* [修复] 直接加大字号，不使用 scale */
-            color: #4a90e2 !important;        
-            font-weight: 800 !important;      
-            opacity: 1 !important;            
-            text-shadow: 0 2px 10px rgba(74, 144, 226, 0.6); 
-            line-height: 40px !important;     /* [修复] 给高亮行足够的行高，防止底部被切 */
-            margin: 10px 0 !important;        
-            padding: 5px 0 !important;        /* [修复] 增加内边距，容纳阴影 */
-            transform: none !important;       /* [修复] 移除缩放，防止渲染层裁切 */
+            font-size: 24px !important;
+            line-height: 42px !important;
+            opacity: 1 !important;
+            filter: blur(0px);
+            transform: scale(1.05);
+            font-weight: 800 !important;
+            background: linear-gradient(135deg, #4a90e2 0%, #8e44ad 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+            margin: 15px 0 !important;
         }
 
         /* 移动端适配 */
@@ -249,10 +279,12 @@
             .aplayer .aplayer-lrc p {
                 font-size: 14px !important;
                 line-height: 24px !important;
+                opacity: 0.3 !important; /* 手机上稍微亮一点以免看不见 */
             }
             .aplayer .aplayer-lrc p.aplayer-lrc-current {
-                font-size: 18px !important;
+                font-size: 20px !important;
                 line-height: 32px !important;
+                margin: 10px 0 !important;
             }
         }
     </style>
@@ -380,6 +412,7 @@
     });
 
     function playMusic(id, source, name, artist, cover) {
+        // 构建请求参数
         const streamUrl = `/download?id=${encodeURIComponent(id)}&source=${source}`;
         const lrcUrl = `/lyric?id=${encodeURIComponent(id)}&source=${source}`;
 
