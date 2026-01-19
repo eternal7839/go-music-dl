@@ -2,12 +2,6 @@ version: 2
 project_name: go-music-dl
 env:
   - GO111MODULE=on
-before:
-  hooks:
-    - go mod tidy
-    - go generate ./...
-    - go install github.com/tc-hib/go-winres@latest
-    - go-winres make --in ./winres/winres.json --out ./cmd/music-dl/rsrc
 builds:
   - id: nowin
     env:
@@ -45,6 +39,22 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
+    # === [调试核心] 在这里添加构建前钩子 ===
+    hooks:
+      pre:
+        - echo "================ DEBUG START ================"
+        - echo "当前目录(PWD):"
+        - pwd
+        - go mod tidy
+        - go generate ./...
+        - go install github.com/tc-hib/go-winres@latest
+        - echo "正在执行 go-winres 生成..."
+        # 显式生成 syso 文件
+        - go-winres make --in ./winres/winres.json --out ./cmd/music-dl/rsrc
+        - echo "检查 cmd/music-dl 目录内容:"
+        # 列出文件，如果 syso 存在，这里必须能看到
+        - ls -la cmd/music-dl/
+        - echo "================ DEBUG END ================"
 
 checksum:
   name_template: "go-music-dl_checksums.txt"
