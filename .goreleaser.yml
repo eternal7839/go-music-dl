@@ -7,7 +7,7 @@ before:
     - go mod tidy
     - go generate ./...
     - go install github.com/tc-hib/go-winres@latest
-    - go-winres make
+    - go-winres make --in ./winres/winres.json --out ./cmd/music-dl/rsrc
 builds:
   - id: nowin
     env:
