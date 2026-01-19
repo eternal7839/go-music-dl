@@ -1,3 +1,4 @@
+version: 2
 project_name: go-music-dl
 env:
   - GO111MODULE=on
@@ -22,6 +23,8 @@ builds:
     goarm:
       - 6
       - 7
+    main: ./cmd/music-dl
+    binary: music-dl
     mod_timestamp: "{{ .CommitTimestamp }}"
     flags:
       - -trimpath
@@ -35,6 +38,8 @@ builds:
       - windows
     goarch:
       - amd64
+    main: ./cmd/music-dl
+    binary: music-dl
     mod_timestamp: "{{ .CommitTimestamp }}"
     flags:
       - -trimpath
@@ -59,6 +64,12 @@ archives:
   - id: nowin
     builds:
       - nowin
+    name_template: "go-music-dl_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    format_overrides:
+      - goos: windows
+        formats: zip
+  - id: win
+    builds:
       - win
     name_template: "go-music-dl_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     format_overrides:
