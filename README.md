@@ -12,6 +12,10 @@
 - **统一文件命名**: 下载文件自动命名为 `歌手 - 歌名.mp3` 格式
 - **完整元数据**: 显示歌曲时长、大小、专辑、封面等详细信息
 - **封面下载**: 支持同时下载歌曲封面图片
+- **歌词支持**: 支持歌词显示和同步播放，使用 APlayer 播放器提供优美的歌词体验
+- **音乐播放器**: 内置 Web 音乐播放器，支持在线试听和歌词同步
+- **Live2D 看板娘**: 集成 Live2D 虚拟角色，提供更友好的用户界面
+- **Soda 解密**: 支持汽水音乐加密音频的解密功能
 - **工程化结构**: 遵循 Go 标准项目布局，模块化设计
 - **VIP过滤**: 自动过滤VIP和付费歌曲，仅返回免费可下载的歌曲
 - **灵活选择**: 支持范围选择（如 `1-3`）、多选（如 `1 3 5`）和混合选择（如 `1-3,5,7-9`）
@@ -83,11 +87,29 @@ go build -o music-dl ./cmd/music-dl
 ./music-dl --version
 ```
 
+### 使用 Nix 安装（实验性）
+
+项目支持 Nix 包管理器，提供可重复的构建环境：
+
+```bash
+# 使用 Nix Flakes
+nix run github:guohuiyuan/go-music-dl
+
+# 或从本地克隆构建
+git clone https://github.com/guohuiyuan/go-music-dl.git
+cd go-music-dl
+nix build
+```
+
 ### 作为库使用
 
 ```bash
 go get github.com/guohuiyuan/go-music-dl
 ```
+
+### 自动依赖更新
+
+项目使用 gomod2nix 管理 Nix 依赖。当 `go.mod` 或 `go.sum` 更新时，GitHub Actions 会自动运行 `gomod2nix` 更新 `gomod2nix.toml` 文件。
 
 ## 使用指南
 
@@ -158,9 +180,11 @@ Flags:
 
 #### 访问 Web 界面
 打开浏览器访问 `http://localhost:8080`，你将看到：
-- 简洁的搜索界面
-- 表格化显示搜索结果（包含序号、歌名、歌手、专辑、时长、大小、来源）
+- 简洁的搜索界面，集成 Live2D 看板娘
+- 表格化显示搜索结果（包含序号、歌名、歌手、专辑、时长、大小、来源、封面）
+- 内置音乐播放器，支持在线试听和歌词同步显示
 - 一键下载功能，文件自动命名为 `歌手 - 歌名.mp3`
+- 支持汽水音乐加密音频的解密和播放
 
 ### CLI 交互界面
 
@@ -291,6 +315,78 @@ go test ./...
 go clean
 ```
 
+### 快速运行脚本
+
+项目提供了跨平台的运行脚本：
+
+**Windows (run.bat):**
+```batch
+run.bat
+```
+
+**Linux/macOS (run.sh):**
+```bash
+chmod +x run.sh
+./run.sh
+```
+
+这些脚本会自动设置 Go 代理、整理依赖并运行程序。
+
+### Windows 资源文件
+
+项目包含 Windows 资源文件 (`winres/` 目录)，用于为 Windows 可执行文件添加图标和版本信息：
+- `winres.json`: Windows 资源配置文件
+- `icon.png`, `icon16.png`: 应用程序图标
+- `init.go`: 资源初始化文件
+
+使用 `go generate` 命令生成资源文件：
+```bash
+go generate ./...
+```
+
+### 自动化发布
+
+项目使用 GoReleaser 进行自动化构建和发布：
+
+**配置文件**: `.goreleaser.yml`
+- 支持多平台构建 (Linux, Windows, macOS)
+- 自动生成 Windows 资源
+- 生成压缩包和校验和
+- 支持 DEB 和 RPM 包格式
+
+**GitHub Actions 工作流**:
+- `release.yml`: 发布新版本时自动构建和发布
+- `push.yml`: 推送代码时运行测试
+- `pull.yml`: 拉取请求时运行测试
+- `nightly.yml`: 每日构建
+- `gomod2nix.yml`: 自动更新 Nix 依赖
+
+### 开发工作流
+
+1. **本地开发**:
+   ```bash
+   # 使用运行脚本
+   ./run.sh  # Linux/macOS
+   run.bat   # Windows
+   ```
+
+2. **构建发布版本**:
+   ```bash
+   # 使用 GoReleaser 进行本地测试
+   goreleaser release --snapshot --clean
+   ```
+
+3. **生成 Windows 资源**:
+   ```bash
+   go generate ./...
+   ```
+
+4. **跨平台构建**:
+   ```bash
+   # 构建所有平台
+   gox -osarch="linux/amd64 linux/386 windows/amd64 darwin/amd64"
+   ```
+
 ## 配置说明
 
 ### 环境变量
@@ -340,6 +436,27 @@ A: 当前版本支持封面下载功能：
 3. 封面下载功能由 `core.DownloadSongWithCover` 函数提供支持
 4. 如果封面下载失败，不会影响主音频文件的下载，仅记录警告日志
 
+### Q: 如何查看歌词？
+A: 当前版本支持歌词显示功能：
+1. 在 Web 界面中，点击"试听"按钮会启动音乐播放器
+2. 播放器会自动加载并显示同步歌词
+3. 歌词使用 APlayer 播放器提供优美的同步显示效果
+4. 如果歌曲没有歌词，播放器会显示"暂无歌词"提示
+
+### Q: 汽水音乐（Soda）的音频为什么需要解密？
+A: 汽水音乐对音频文件进行了加密保护：
+1. 下载的音频文件是加密的，无法直接播放
+2. 项目内置了 AES-CTR 解密算法，自动解密音频
+3. 解密过程对用户透明，下载后即可正常播放
+4. 支持在线试听和下载后的解密播放
+
+### Q: Live2D 看板娘是什么？
+A: Live2D 是一种2D虚拟角色技术：
+1. 在 Web 界面右下角显示虚拟角色
+2. 提供更友好的用户交互体验
+3. 支持鼠标悬停、点击等交互
+4. 在移动端会自动隐藏以保持界面简洁
+
 ## 性能优化
 
 - **并发搜索**: Web 和 CLI 模式都支持多源并发搜索
@@ -348,7 +465,7 @@ A: 当前版本支持封面下载功能：
 
 ## 许可证
 
-GNU General Public License v3.0
+GNU Affero General Public License v3.0
 
 ## 致谢
 
