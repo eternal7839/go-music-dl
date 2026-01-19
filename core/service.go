@@ -137,6 +137,11 @@ func GetDownloadURL(song *model.Song) (string, error) {
 
 // DownloadSong CLI使用的下载函数
 func DownloadSong(song *model.Song) error {
+	return DownloadSongWithCover(song, false)
+}
+
+// DownloadSongWithCover 下载歌曲，可选下载封面
+func DownloadSongWithCover(song *model.Song, downloadCover bool) error {
 	// 1. 获取下载链接
 	url, err := GetDownloadURL(song)
 	if err != nil {
@@ -173,6 +178,37 @@ func DownloadSong(song *model.Song) error {
 	}
 	defer out.Close()
 
+	_, err = out.Write(data)
+	if err != nil {
+		return err
+	}
+
+	// 5. 下载封面（如果启用且存在）
+	if downloadCover && song.Cover != "" {
+		// 构造封面文件名: "歌手 - 歌名.jpg"
+		coverName := strings.TrimSuffix(filename, filepath.Ext(filename)) + ".jpg"
+		coverPath := filepath.Join(saveDir, coverName)
+		err = downloadCoverImage(song.Cover, coverPath)
+		if err != nil {
+			// 封面下载失败不影响主流程，仅记录日志
+			fmt.Printf("⚠️ 封面下载失败: %v\n", err)
+		}
+	}
+
+	return nil
+}
+
+// downloadCoverImage 下载封面图片
+func downloadCoverImage(coverURL, destPath string) error {
+	data, err := utils.Get(coverURL)
+	if err != nil {
+		return err
+	}
+	out, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
 	_, err = out.Write(data)
 	return err
 }

@@ -36,7 +36,7 @@ var (
 	selected   = lipgloss.NewStyle().PaddingLeft(1).Foreground(highlight).Bold(true)
 )
 
-func Run(keyword string, sources []string, outDir string, number int) {
+func Run(keyword string, sources []string, outDir string, number int, withCover bool) {
 	fmt.Printf("🔍 正在搜索: %s ...\n", keyword)
 
 	// --- 1. 默认源设置逻辑 ---
@@ -116,17 +116,18 @@ func Run(keyword string, sources []string, outDir string, number int) {
 	}
 
 	// 启动 TUI 界面
-	p := tea.NewProgram(modelState{songs: allSongs, outDir: outDir})
+	p := tea.NewProgram(modelState{songs: allSongs, outDir: outDir, withCover: withCover})
 	if _, err := p.Run(); err != nil {
 		fmt.Println("运行错误:", err)
 	}
 }
 
 type modelState struct {
-	songs    []model.Song
-	cursor   int
-	outDir   string
-	quitting bool
+	songs     []model.Song
+	cursor    int
+	outDir    string
+	withCover bool
+	quitting  bool
 }
 
 func (m modelState) Init() tea.Cmd { return nil }
@@ -150,7 +151,7 @@ func (m modelState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			selectedSong := m.songs[m.cursor]
 			// 选中歌曲后调用下载函数
 			return m, func() tea.Msg {
-				downloadCLI(&selectedSong, m.outDir)
+				downloadCLI(&selectedSong, m.outDir, m.withCover)
 				return tea.Quit()
 			}
 		}
@@ -212,13 +213,11 @@ func (m modelState) View() string {
 
 // downloadCLI 使用 Core 包进行下载
 // 这样可以确保复用 Headers 伪装、防盗链处理等逻辑，避免“假下载”
-func downloadCLI(s *model.Song, dir string) {
+func downloadCLI(s *model.Song, dir string, withCover bool) {
 	fmt.Printf("\n🚀 正在通过核心下载器下载: %s - %s ...\n", s.Artist, s.Name)
 
-	// 调用 Core 包的 DownloadSong 方法
-	// 注意：Core 包内部应处理文件保存路径，或者你可以修改 Core 接受 outputDir 参数
-	// 这里假设 Core 默认下载到当前目录的 downloads 文件夹，或者你可以在 Core 中完善路径逻辑
-	err := core.DownloadSong(s)
+	// 调用 Core 包的 DownloadSongWithCover 方法
+	err := core.DownloadSongWithCover(s, withCover)
 
 	if err != nil {
 		fmt.Printf("❌ 下载失败: %v\n", err)
