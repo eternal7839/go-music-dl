@@ -51,9 +51,16 @@ func Start(port string) {
 
 	// 首页
 	r.GET("/", func(c *gin.Context) {
+		allSources := core.GetAllSourceNames()
+		sourceDescriptions := make(map[string]string)
+		for _, source := range allSources {
+			sourceDescriptions[source] = core.GetSourceDescription(source)
+		}
+		
 		c.HTML(http.StatusOK, "index.html", gin.H{
-			"AllSources": core.GetAllSourceNames(),
+			"AllSources": allSources,
 			"DefaultSources": core.GetDefaultSourceNames(),
+			"SourceDescriptions": sourceDescriptions,
 		})
 	})
 
@@ -86,11 +93,18 @@ func Start(port string) {
 			})
 		}
 
+		allSources := core.GetAllSourceNames()
+		sourceDescriptions := make(map[string]string)
+		for _, source := range allSources {
+			sourceDescriptions[source] = core.GetSourceDescription(source)
+		}
+		
 		c.HTML(http.StatusOK, "index.html", gin.H{
 			"Result":     formattedSongs,
 			"Keyword":    keyword,
-			"AllSources": core.GetAllSourceNames(),
+			"AllSources": allSources,
 			"DefaultSources": core.GetDefaultSourceNames(),
+			"SourceDescriptions": sourceDescriptions,
 			"Selected":   sources,
 		})
 	})

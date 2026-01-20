@@ -12,22 +12,30 @@
 
     <style>
         :root {
-            --primary-color: #4a90e2;
+            /* 品牌色：渐变蓝紫 */
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
             --bg-color: #f5f7fa;
-            --card-bg: #ffffff;
-            --text-color: #333;
-            --secondary-text: #666;
-            --border-radius: 12px;
-            --shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            --text-main: #2d3748;
+            --text-sub: #718096;
+            --card-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --hover-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #eef2f5;
+            background-image: 
+                radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+                radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+                radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+            background-size: 100% 600px;
+            background-repeat: no-repeat;
+            color: var(--text-main);
             margin: 0;
-            padding: 20px;
-            padding-bottom: 100px; /* 为底部播放器留空 */
+            padding: 40px 20px 120px; /* 底部留白给播放器 */
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -36,256 +44,341 @@
         .container {
             width: 100%;
             max-width: 900px;
+            z-index: 1;
         }
 
-        /* 搜索区域样式 */
+        /* --- 顶部搜索区域 --- */
         .search-box {
-            background: var(--card-bg);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
             padding: 30px;
-            border-radius: var(--border-radius);
-            box-shadow: var(--shadow);
+            border-radius: 20px;
+            box-shadow: var(--card-shadow);
             margin-bottom: 30px;
-            text-align: center;
+            border: 1px solid rgba(255,255,255,0.3);
         }
 
-        h1 { margin-top: 0; color: var(--primary-color); }
+        .logo-area {
+            text-align: center;
+            margin-bottom: 25px;
+        }
 
+        h1 { 
+            margin: 0; 
+            font-size: 2.5rem;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 800;
+            letter-spacing: -1px;
+        }
+
+        /* 搜索输入框 */
         .input-group {
             display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
+            gap: 12px;
+            margin-bottom: 25px;
+            position: relative;
         }
 
         input[type="text"] {
             flex: 1;
-            padding: 12px 20px;
-            border: 2px solid #eee;
-            border-radius: 8px;
+            padding: 16px 24px;
+            border: 2px solid #e2e8f0;
+            border-radius: 50px;
             font-size: 16px;
             outline: none;
-            transition: border-color 0.3s;
+            transition: all 0.3s ease;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
         }
 
-        input[type="text"]:focus { border-color: var(--primary-color); }
+        input[type="text"]:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+        }
 
-        button {
-            padding: 12px 30px;
-            background-color: var(--primary-color);
+        button.search-btn {
+            padding: 0 32px;
+            background: var(--primary-gradient);
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 50px;
             font-size: 16px;
+            font-weight: 600;
             cursor: pointer;
-            transition: background 0.3s;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);
         }
 
-        button:hover { background-color: #357abd; }
-
-        /* 源选择器样式 */
-        .source-selector {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            justify-content: center;
-            padding-top: 15px;
-            border-top: 1px solid #eee;
+        button.search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
         }
 
-        .checkbox-label {
+        /* --- 搜索源选择器 (Grid 布局优化) --- */
+        .source-selector-header {
             display: flex;
+            justify-content: space-between;
             align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #edf2f7;
+        }
+        
+        .source-title { color: var(--text-sub); font-size: 0.9rem; font-weight: 600; }
+        
+        .source-actions button {
+            background: #edf2f7;
+            color: var(--text-sub);
+            border: none;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 12px;
             cursor: pointer;
-            font-size: 14px;
-            color: var(--secondary-text);
+            margin-left: 8px;
+            transition: all 0.2s;
+        }
+        .source-actions button:hover { background: #e2e8f0; color: var(--text-main); }
+
+        .source-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+        }
+
+        /* 隐藏原生 checkbox */
+        .source-checkbox { display: none; }
+
+        /* 自定义 Checkbox 样式 */
+        .source-label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #f7fafc;
+            border: 2px solid transparent;
+            border-radius: 12px;
+            padding: 10px 5px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
             user-select: none;
         }
 
-        .checkbox-label input { margin-right: 6px; }
+        .source-label strong { font-size: 14px; display: block; margin-bottom: 2px; }
+        .source-label span { font-size: 10px; color: #a0aec0; line-height: 1.2; display: none;} /* 描述太长先隐藏，保持界面整洁，或者鼠标悬停显示 */
 
-        /* 结果列表样式 */
+        /* 选中状态 */
+        .source-checkbox:checked + .source-label {
+            background: rgba(102, 126, 234, 0.1);
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+        .source-checkbox:checked + .source-label span { color: rgba(102, 126, 234, 0.7); }
+
+        /* --- 结果列表 --- */
         .result-list {
             list-style: none;
             padding: 0;
-            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
         }
 
         .song-card {
-            background: var(--card-bg);
-            margin-bottom: 15px;
-            padding: 20px;
-            border-radius: var(--border-radius);
-            box-shadow: var(--shadow);
+            background: white;
+            padding: 15px;
+            border-radius: 16px;
+            box-shadow: var(--card-shadow);
             display: flex;
             align-items: center;
-            transition: transform 0.2s;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
         }
 
-        .song-card:hover { transform: translateY(-2px); }
+        .song-card:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--hover-shadow);
+        }
 
+        /* 左侧封面 */
         .cover-wrapper {
-            width: 60px;
-            height: 60px;
+            width: 70px;
+            height: 70px;
             flex-shrink: 0;
-            margin-right: 15px;
-            border-radius: 8px;
+            margin-right: 20px;
+            border-radius: 12px;
             overflow: hidden;
-            background: #f0f0f0;
-            border: 1px solid #eee;
+            background: #edf2f7;
             position: relative;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         .cover-wrapper img {
             width: 100%;
             height: 100%;
             object-fit: cover;
+            transition: transform 0.5s ease;
         }
+        .song-card:hover .cover-wrapper img { transform: scale(1.1); }
 
+        /* 中间信息 */
         .song-info {
             flex-grow: 1;
             min-width: 0;
+            margin-right: 15px;
         }
 
-        .song-info h3 { margin: 0 0 5px 0; font-size: 18px; }
-        .song-info p { margin: 0; color: var(--secondary-text); font-size: 14px; }
-        
-        .tag {
-            display: inline-block;
+        .song-info h3 { 
+            margin: 0 0 6px 0; 
+            font-size: 17px; 
+            font-weight: 700;
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis;
+        }
+
+        .artist-album {
+            font-size: 14px;
+            color: var(--text-sub);
+            margin-bottom: 8px;
+            white-space: nowrap; 
+            overflow: hidden; 
+            text-overflow: ellipsis;
+        }
+
+        .tags-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .source-tag {
             padding: 2px 8px;
-            background: #e1ecf4;
-            color: #39739d;
+            background: #ebf4ff;
+            color: #4299e1;
             border-radius: 4px;
-            font-size: 12px;
-            margin-right: 8px;
+            font-size: 11px;
+            font-weight: 700;
             text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
+        .meta-tag {
+            font-size: 11px;
+            color: #a0aec0;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* 右侧操作按钮 */
         .actions {
             display: flex;
             gap: 10px;
         }
 
-        .btn-common {
-            text-decoration: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 14px;
-            cursor: pointer;
+        .btn-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
             border: none;
-            transition: background 0.2s;
             display: flex;
             align-items: center;
-            gap: 5px;
+            justify-content: center;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
         }
 
-        .play-btn { background-color: #4a90e2; color: white; }
-        .play-btn:hover { background-color: #357abd; }
+        .play-btn {
+            background: var(--primary-gradient);
+            color: white;
+            box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);
+        }
+        .play-btn:hover { transform: scale(1.1); }
 
-        .download-btn { background-color: #28a745; color: white; }
-        .download-btn:hover { background-color: #218838; }
-
-        .meta-info {
-            display: flex;
-            gap: 10px;
-            margin-top: 5px;
-            font-size: 13px;
-            color: #888;
+        .download-btn {
+            background: #f7fafc;
+            color: var(--text-sub);
+            border: 1px solid #e2e8f0;
+        }
+        .download-btn:hover {
+            background: #edf2f7;
+            color: var(--primary-color);
+            border-color: var(--primary-color);
         }
 
         .no-results {
             text-align: center;
-            padding: 40px;
-            color: #888;
-            font-size: 16px;
+            padding: 60px;
+            background: rgba(255,255,255,0.8);
+            border-radius: 20px;
+            color: var(--text-sub);
         }
 
-        /* Live2D 看板娘定位调整 */
-        #waifu {
-            left: auto !important;       
-            right: 20px !important;      
-            bottom: 100px !important;    
-            z-index: 999;                
-        }
-        
-        @media (max-width: 768px) {
-            #waifu { display: none; } 
-        }
-
-        /* =========================================
-           [高级质感歌词] 聚光灯 + 磨砂效果 + 渐变流光
-           ========================================= */
-
-        /* 1. 歌词容器：增加上下边缘的柔和遮罩 */
+        /* --- 歌词 & 播放器样式 (保持原有的高级逻辑) --- */
         .aplayer.aplayer-fixed .aplayer-lrc {
             margin-bottom: 20px;
             padding-bottom: 20px;
-            text-shadow: none !important; /* 去掉默认生硬的阴影 */
-            /* 核心：使用 mask 遮罩实现上下边缘淡入淡出 */
-            -webkit-mask-image: linear-gradient(to bottom, 
-                transparent 0%, 
-                black 10%, 
-                black 90%,  /* 改成 90% 或 95%，让底部可视区域更大 */
-                transparent 100%
-            );
-            mask-image: linear-gradient(to bottom, 
-                transparent 0%, 
-                black 10%, 
-                black 90%,  /* 改成 90% 或 95%，让底部可视区域更大 */
-                transparent 100%
-            );
+            text-shadow: none !important;
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
         }
 
-        /* --- 歌词逻辑重构 --- */
-
-        /* 1. 基础样式（这实际上变成了"过去歌词"的样式，因为会被后面覆盖） */
+        /* 过去歌词：隐形 */
         .aplayer .aplayer-lrc p {
             font-size: 16px !important;
             line-height: 32px !important;
-            font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif !important;
+            font-family: "PingFang SC", sans-serif !important;
             color: #000 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            font-weight: 400 !important;
-            
-            /* 【过去歌词】：极低透明度 + 模糊，达到"不显现"的效果 */
             opacity: 0.1 !important; 
             filter: blur(1px);       
             transform: scale(0.95);
             transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+            margin: 0 !important;
         }
 
-        /* 2. 【未来歌词】：位于当前行之后的兄弟元素 */
-        /* 使用 ~ 选择器选中当前行之后的所有 p 标签 */
+        /* 未来歌词 */
         .aplayer .aplayer-lrc p.aplayer-lrc-current ~ p {
-            opacity: 0.5 !important; /* 未来歌词：半透明，可见但不如当前行抢眼 */
-            filter: blur(0px);       /* 未来歌词不模糊，方便阅读 */
+            opacity: 0.5 !important;
+            filter: blur(0px);
         }
 
-        /* 3. 【当前歌词】：高亮、流光 */
+        /* 当前歌词 */
         .aplayer .aplayer-lrc p.aplayer-lrc-current {
-            font-size: 24px !important;
-            line-height: 42px !important;
+            font-size: 26px !important;
+            line-height: 46px !important;
             opacity: 1 !important;
             filter: blur(0px);
             transform: scale(1.05);
             font-weight: 800 !important;
-            background: linear-gradient(135deg, #4a90e2 0%, #8e44ad 100%);
+            background: var(--primary-gradient);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+            filter: drop-shadow(0 4px 8px rgba(102, 126, 234, 0.3));
             margin: 15px 0 !important;
         }
 
-        /* 移动端适配 */
+        /* Live2D */
+        #waifu { right: 20px !important; bottom: 90px !important; z-index: 999; }
+        
         @media (max-width: 768px) {
-            .aplayer .aplayer-lrc p {
-                font-size: 14px !important;
-                line-height: 24px !important;
-                opacity: 0.3 !important; /* 手机上稍微亮一点以免看不见 */
-            }
-            .aplayer .aplayer-lrc p.aplayer-lrc-current {
-                font-size: 20px !important;
-                line-height: 32px !important;
-                margin: 10px 0 !important;
-            }
+            #waifu { display: none; } 
+            .container { padding: 0; }
+            .search-box { padding: 20px; border-radius: 0 0 20px 20px; }
+            h1 { font-size: 1.8rem; }
+            .source-grid { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+            .source-label { padding: 8px 2px; }
+            .source-label strong { font-size: 12px; }
+            .song-card { border-radius: 12px; padding: 12px; }
+            .cover-wrapper { width: 55px; height: 55px; margin-right: 12px; }
+            .song-info h3 { font-size: 15px; }
+            .btn-icon { width: 36px; height: 36px; font-size: 14px; }
+            
+            .aplayer .aplayer-lrc p { font-size: 14px !important; }
+            .aplayer .aplayer-lrc p.aplayer-lrc-current { font-size: 20px !important; margin: 10px 0 !important; }
         }
     </style>
 </head>
@@ -293,26 +386,41 @@
 
 <div class="container">
     <div class="search-box">
-        <h1>🎵 Music Hub</h1>
+        <div class="logo-area">
+            <h1>🎵 Music Hub</h1>
+            <p style="color: var(--text-sub); margin-top: 5px; font-size: 14px;">聚合全网音乐资源</p>
+        </div>
+        
         <form action="/search" method="get">
             <div class="input-group">
-                <input type="text" name="q" value="{{.Keyword}}" placeholder="输入歌名、歌手..." required>
-                <button type="submit">搜索</button>
+                <input type="text" name="q" value="{{.Keyword}}" placeholder="搜索歌曲、歌手、专辑..." required autocomplete="off">
+                <button type="submit" class="search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
             </div>
 
             <div class="source-selector">
-                <label style="width: 100%; margin-bottom: 10px; color: #888;">搜索源选择 (默认勾选: netease, qq, kugou, kuwo, migu, qianqian, soda)</label>
-                {{ range $source := .AllSources }}
-                <label class="checkbox-label">
-                    <input type="checkbox" name="sources" value="{{ $source }}" 
-                        {{ if $.Selected }}
-                            {{ range $.Selected }}{{ if eq . $source }}checked{{ end }}{{ end }}
-                        {{ else }}
-                            {{ range $.DefaultSources }}{{ if eq . $source }}checked{{ end }}{{ end }}
-                        {{ end }}> 
-                    {{ $source }}
-                </label>
-                {{ end }}
+                <div class="source-selector-header">
+                    <span class="source-title">搜索源</span>
+                    <div class="source-actions">
+                        <button type="button" id="btn-select-all">全选</button>
+                        <button type="button" id="btn-select-none">清空</button>
+                    </div>
+                </div>
+                
+                <div class="source-grid">
+                    {{ range $source := .AllSources }}
+                    <label>
+                        <input type="checkbox" name="sources" value="{{ $source }}" class="source-checkbox"
+                            {{ if $.Selected }}
+                                {{ range $.Selected }}{{ if eq . $source }}checked{{ end }}{{ end }}
+                            {{ else }}
+                                {{ range $.DefaultSources }}{{ if eq . $source }}checked{{ end }}{{ end }}
+                            {{ end }}> 
+                        <div class="source-label">
+                            <strong>{{ $source }}</strong>
+                            </div>
+                    </label>
+                    {{ end }}
+                </div>
             </div>
         </form>
     </div>
@@ -330,28 +438,33 @@
                 </div>
                 <div class="song-info">
                     <h3>{{ .Name }}</h3>
-                    <p>
-                        <span class="tag">{{ .Source }}</span>
-                        👤 {{ .Artist }}
-                    </p>
-                    <div class="meta-info">
-                        {{ if .Album }}<span>💿 {{ .Album }}</span>{{ end }}
-                        {{ if .FormatDuration }}<span>⏱ {{ .FormatDuration }}</span>{{ end }}
-                        {{ if .FormatSize }}<span>📦 {{ .FormatSize }}</span>{{ end }}
+                    <div class="artist-album">
+                        <i class="fa-regular fa-user" style="font-size: 11px; margin-right: 4px;"></i> {{ .Artist }}
+                        {{ if .Album }} <span style="margin: 0 5px;">•</span> <i class="fa-solid fa-compact-disc" style="font-size: 11px; margin-right: 4px;"></i> {{ .Album }}{{ end }}
+                    </div>
+                    <div class="tags-row">
+                        <span class="source-tag">{{ .Source }}</span>
+                        {{ if .FormatDuration }}
+                        <span class="meta-tag"><i class="fa-regular fa-clock"></i> {{ .FormatDuration }}</span>
+                        {{ end }}
+                        {{ if .FormatSize }}
+                        <span class="meta-tag"><i class="fa-solid fa-box-archive"></i> {{ .FormatSize }}</span>
+                        {{ end }}
                     </div>
                 </div>
                 
                 <div class="actions">
-                    <button class="btn-common play-btn" 
+                    <button class="btn-icon play-btn" title="试听"
                             onclick="playMusic('{{.ID}}', '{{.Source}}', '{{.Name}}', '{{.Artist}}', '{{.Cover}}')">
-                        <span>▶</span> 试听
+                        <i class="fa-solid fa-play"></i>
                     </button>
 
                     <a href="/download?id={{ .ID }}&source={{ .Source }}&name={{ .Name }}&artist={{ .Artist }}" 
-                       class="btn-common download-btn" 
+                       class="btn-icon download-btn" 
+                       title="下载"
                        target="_blank" 
                        download="{{ .Artist }} - {{ .Name }}.mp3">
-                        <span>⬇</span> 下载
+                        <i class="fa-solid fa-download"></i>
                     </a>
                 </div>
             </li>
@@ -359,7 +472,8 @@
         </ul>
     {{ else if .Keyword }}
         <div class="no-results">
-            <p>未找到符合条件的免费资源，请尝试更换关键词或选择其他搜索源。</p>
+            <i class="fa-solid fa-music" style="font-size: 48px; color: #cbd5e0; margin-bottom: 15px;"></i>
+            <p>未找到符合条件的资源，请尝试更换关键词或增加搜索源。</p>
         </div>
     {{ end }}
 </div>
@@ -371,39 +485,23 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const sourceSelector = document.querySelector('.source-selector');
-        if (sourceSelector) {
-            const selectAllBtn = document.createElement('button');
-            selectAllBtn.type = 'button';
-            selectAllBtn.textContent = '全选';
-            selectAllBtn.style.cssText = 'background: #6c757d; padding: 4px 12px; font-size: 12px; margin-left: 10px;';
-            selectAllBtn.onclick = function() {
-                const checkboxes = sourceSelector.querySelectorAll('input[type="checkbox"]');
-                checkboxes.forEach(cb => cb.checked = true);
-            };
-            
-            const selectNoneBtn = document.createElement('button');
-            selectNoneBtn.type = 'button';
-            selectNoneBtn.textContent = '清空';
-            selectNoneBtn.style.cssText = 'background: #6c757d; padding: 4px 12px; font-size: 12px; margin-left: 5px;';
-            selectNoneBtn.onclick = function() {
-                const checkboxes = sourceSelector.querySelectorAll('input[type="checkbox"]');
-                checkboxes.forEach(cb => cb.checked = false);
-            };
-            
-            const label = sourceSelector.querySelector('label[style*="width: 100%"]');
-            if (label) {
-                label.appendChild(selectAllBtn);
-                label.appendChild(selectNoneBtn);
-            }
-        }
+        // 优化的全选/清空逻辑
+        const checkboxes = document.querySelectorAll('.source-checkbox');
+        
+        document.getElementById('btn-select-all').onclick = function() {
+            checkboxes.forEach(cb => cb.checked = true);
+        };
+        
+        document.getElementById('btn-select-none').onclick = function() {
+            checkboxes.forEach(cb => cb.checked = false);
+        };
     });
 
     const ap = new APlayer({
         container: document.getElementById('aplayer'),
         fixed: true,
         autoplay: true,
-        theme: '#4a90e2',
+        theme: '#667eea', // 配合新主题色
         loop: 'all',
         order: 'list',
         preload: 'auto',
@@ -415,7 +513,6 @@
     });
 
     function playMusic(id, source, name, artist, cover) {
-        // 构建请求参数
         const streamUrl = `/download?id=${encodeURIComponent(id)}&source=${source}`;
         const lrcUrl = `/lyric?id=${encodeURIComponent(id)}&source=${source}`;
 
@@ -425,7 +522,7 @@
             url: streamUrl,
             cover: cover || 'https://via.placeholder.com/150?text=Music',
             lrc: lrcUrl, 
-            theme: '#4a90e2'
+            theme: '#667eea'
         };
 
         ap.list.clear();

@@ -18,6 +18,15 @@ func RunInteractive() {
 	// 1. 获取默认源（排除 bilibili, joox, jamendo, fivesing）
 	defaultSources := core.GetDefaultSourceNames()
 	fmt.Printf(">> 命令行模式已启动\n>> 当前启用源: %v (已排除 bilibili, joox, jamendo, fivesing)\n", defaultSources)
+	
+	// 显示所有支持的源及其描述
+	fmt.Println("\n支持的音乐源简介:")
+	allSources := core.GetAllSourceNames()
+	for _, source := range allSources {
+		desc := core.GetSourceDescription(source)
+		fmt.Printf("  • %s: %s\n", source, desc)
+	}
+	fmt.Println()
 
 	for {
 		fmt.Print("\n[搜索] 请输入歌名或歌手 (输入 q 退出): ")

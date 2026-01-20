@@ -80,6 +80,28 @@ func GetDefaultSourceNames() []string {
 	return defaultSources
 }
 
+// GetSourceDescription 获取音乐源的描述信息
+func GetSourceDescription(source string) string {
+	descriptions := map[string]string{
+		"netease":  "网易云音乐 - 中国领先的在线音乐平台，以个性化推荐和社区氛围著称",
+		"qq":       "QQ音乐 - 腾讯旗下音乐平台，拥有海量正版音乐资源",
+		"kugou":    "酷狗音乐 - 中国知名的数字音乐交互服务提供商，以音效和K歌功能见长",
+		"kuwo":     "酷我音乐 - 提供高品质音乐播放和下载服务，专注于无损音乐",
+		"migu":     "咪咕音乐 - 中国移动旗下音乐平台，拥有丰富的正版音乐版权",
+		"fivesing": "5sing - 中国原创音乐基地，专注于原创音乐和翻唱作品",
+		"jamendo":  "Jamendo - 国际免费音乐平台，提供 Creative Commons 许可的音乐",
+		"joox":     "JOOX - 腾讯在东南亚推出的音乐流媒体服务",
+		"qianqian": "千千音乐 - 百度旗下音乐平台，前身为千千静听",
+		"soda":     "Soda音乐 - 新兴音乐平台，提供高品质音乐流媒体服务",
+		"bilibili": "Bilibili - 中国知名视频弹幕网站，包含大量用户上传的音乐内容",
+	}
+	
+	if desc, exists := descriptions[source]; exists {
+		return desc
+	}
+	return "未知音乐源"
+}
+
 // SearchAndFilter 支持指定源搜索 + 并发处理
 func SearchAndFilter(keyword string, selectedSources []string) ([]model.Song, error) {
 	var wg sync.WaitGroup
