@@ -51,6 +51,8 @@
             box-shadow: var(--shadow);
             margin-bottom: 30px;
             border: 1px solid rgba(255,255,255,0.5);
+            position: relative; /* 确保层级正确 */
+            z-index: 10;
         }
 
         h1 {
@@ -139,7 +141,6 @@
         .source-checkbox:checked + .source-card .source-name { color: var(--primary-color); }
         .source-checkbox:checked + .source-card .source-desc { color: #7f9cf5; }
 
-        /* 选中时的右上角角标 */
         .source-checkbox:checked + .source-card::after {
             content: '✓';
             position: absolute; top: 0; right: 0;
@@ -157,6 +158,8 @@
             background: #fff; padding: 15px; border-radius: 16px;
             box-shadow: var(--shadow); display: flex; align-items: center;
             transition: all 0.2s ease;
+            position: relative;
+            z-index: 5; /* 确保列表在下层装饰之上 */
         }
         .song-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-active); }
 
@@ -179,6 +182,7 @@
             width: 40px; height: 40px; border-radius: 50%; border: none;
             display: flex; align-items: center; justify-content: center;
             cursor: pointer; transition: all 0.2s; text-decoration: none;
+            position: relative; z-index: 10; /* 确保按钮可点击 */
         }
         .btn-play { background: var(--primary-gradient); color: white; box-shadow: 0 4px 10px rgba(102, 126, 234, 0.3); }
         .btn-play:hover { transform: scale(1.1); }
@@ -187,14 +191,16 @@
 
         .no-results { text-align: center; padding: 60px; color: var(--text-sub); }
 
-        /* --- [关键修改] APlayer & 歌词样式 --- */
+        /* --- [修复] APlayer & 歌词样式 --- */
         .aplayer.aplayer-fixed .aplayer-lrc {
             margin-bottom: 20px; 
             padding-bottom: 20px; 
             text-shadow: none !important;
-            /* [修改点 1] 下方透明度去除：从透明到黑色(15%)再到完全黑色(100%) */
             -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%);
             mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%);
+            
+            /* [关键修复] 让鼠标点击“穿透”歌词层，避免挡住下面的按钮 */
+            pointer-events: none !important;
         }
         
         .aplayer .aplayer-lrc p {
@@ -212,16 +218,22 @@
             background: var(--primary-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         }
 
-        /* --- [关键修改] Live2D 人物位置 --- */
+        /* --- [修复] Live2D 人物位置 --- */
         #waifu {
             right: 20px !important;
             bottom: 90px !important;
-            z-index: 99999 !important; /* 提高层级，确保不被遮挡 */
+            z-index: 99999 !important;
+            
+            /* [关键修复] 只有人物本身(canvas)可点击，外层容器不阻挡点击 */
+            pointer-events: none !important;
+        }
+        #waifu canvas {
+            pointer-events: auto !important; /* 恢复人物交互 */
         }
 
         /* 移动端适配 */
         @media (max-width: 768px) {
-            #waifu { display: none; } /* 手机端隐藏人物 */
+            #waifu { display: none; }
             .container { padding: 0; }
             .search-box { padding: 20px; border-radius: 0 0 20px 20px; }
             .source-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }

@@ -12,7 +12,7 @@
 - **统一文件命名**: 下载文件自动命名为 `歌手 - 歌名.mp3` 格式
 - **完整元数据**: 显示歌曲时长、大小、专辑、封面等详细信息
 - **封面下载**: 支持同时下载歌曲封面图片
-- **歌词支持**: 支持歌词显示和同步播放，使用 APlayer 播放器提供优美的歌词体验
+- **歌词支持**: 支持歌词显示和同步播放，使用 APlayer 播放器提供优美的歌词体验，专注于当前播放歌词的高亮显示
 - **音乐播放器**: 内置 Web 音乐播放器，支持在线试听和歌词同步
 - **Live2D 看板娘**: 集成 Live2D 虚拟角色，提供更友好的用户界面
 - **Soda 解密**: 支持汽水音乐加密音频的解密功能
@@ -440,7 +440,7 @@ A: 当前版本支持封面下载功能：
 A: 当前版本支持歌词显示功能：
 1. 在 Web 界面中，点击"试听"按钮会启动音乐播放器
 2. 播放器会自动加载并显示同步歌词
-3. 歌词使用 APlayer 播放器提供优美的同步显示效果
+3. 歌词使用 APlayer 播放器提供优美的同步显示效果，专注于当前播放歌词的高亮显示
 4. 如果歌曲没有歌词，播放器会显示"暂无歌词"提示
 
 ### Q: 汽水音乐（Soda）的音频为什么需要解密？
@@ -474,6 +474,8 @@ GNU Affero General Public License v3.0
 - [Gin](https://github.com/gin-gonic/gin): Web 框架  
 - [Bubble Tea](https://github.com/charmbracelet/bubbletea): TUI 框架
 - [Tailwind CSS](https://tailwindcss.com/): CSS 框架
+- [musicdl](https://github.com/CharlesPikachu/musicdl): 轻量级无损音乐下载器
+- [music-dl](https://github.com/0xHJK/music-dl): 从网易云音乐、QQ音乐、酷狗音乐、百度音乐、虾米音乐、咪咕音乐等搜索和下载歌曲
 
 ## 贡献指南
 
