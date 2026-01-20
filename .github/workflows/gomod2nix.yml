@@ -18,14 +18,14 @@ jobs:
           nix_path: nixpkgs=channel:nixos-unstable
 
       - name: Set up Go
-        uses: actions/setup-go@master
+        uses: actions/setup-go@main
         with:
           go-version: "1.25"
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@master
+        uses: actions/checkout@main
         with:
-          ref: master
+          ref: main
           fetch-depth: 0
 
       - name: gomod2nix update
