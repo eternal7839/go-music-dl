@@ -20,6 +20,9 @@ import (
 	"github.com/guohuiyuan/music-lib/qq"
 	"github.com/guohuiyuan/music-lib/kugou"
 	"github.com/guohuiyuan/music-lib/qianqian"
+	"github.com/guohuiyuan/music-lib/migu"
+	"github.com/guohuiyuan/music-lib/joox"
+	"github.com/guohuiyuan/music-lib/fivesing"
 )
 
 //go:embed templates/*
@@ -50,16 +53,17 @@ func Start(port string) {
 	r.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "index.html", gin.H{
 			"AllSources": core.GetAllSourceNames(),
+			"DefaultSources": core.GetDefaultSourceNames(),
 		})
 	})
 
-	// 搜索接口
+		// 搜索接口
 	r.GET("/search", func(c *gin.Context) {
 		keyword := c.Query("q")
 		sources := c.QueryArray("sources")
 
 		if len(sources) == 0 {
-			sources = core.GetAllSourceNames()
+			sources = core.GetDefaultSourceNames()
 		}
 
 		songs, err := core.SearchAndFilter(keyword, sources)
@@ -86,6 +90,7 @@ func Start(port string) {
 			"Result":     formattedSongs,
 			"Keyword":    keyword,
 			"AllSources": core.GetAllSourceNames(),
+			"DefaultSources": core.GetDefaultSourceNames(),
 			"Selected":   sources,
 		})
 	})
@@ -117,6 +122,12 @@ func Start(port string) {
 			lrc, err = kugou.GetLyrics(&model.Song{ID: id, Source: source})
 		case "qianqian":
 			lrc, err = qianqian.GetLyrics(&model.Song{ID: id, Source: source})
+		case "migu":
+			lrc, err = migu.GetLyrics(&model.Song{ID: id, Source: source})
+		case "joox":
+			lrc, err = joox.GetLyrics(&model.Song{ID: id, Source: source})
+		case "fivesing":
+			lrc, err = fivesing.GetLyrics(&model.Song{ID: id, Source: source})
 		default:
 			lrc = "[00:00.00] 暂不支持该源歌词"
 		}

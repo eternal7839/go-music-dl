@@ -301,12 +301,15 @@
             </div>
 
             <div class="source-selector">
-                <label style="width: 100%; margin-bottom: 10px; color: #888;">搜索源选择 (默认全选)</label>
+                <label style="width: 100%; margin-bottom: 10px; color: #888;">搜索源选择 (默认勾选: netease, qq, kugou, kuwo, migu, qianqian, soda)</label>
                 {{ range $source := .AllSources }}
                 <label class="checkbox-label">
                     <input type="checkbox" name="sources" value="{{ $source }}" 
-                        {{ if $.Selected }}{{ range $.Selected }}{{ if eq . $source }}checked{{ end }}{{ end }}
-                        {{ else }}checked{{ end }}> 
+                        {{ if $.Selected }}
+                            {{ range $.Selected }}{{ if eq . $source }}checked{{ end }}{{ end }}
+                        {{ else }}
+                            {{ range $.DefaultSources }}{{ if eq . $source }}checked{{ end }}{{ end }}
+                        {{ end }}> 
                     {{ $source }}
                 </label>
                 {{ end }}

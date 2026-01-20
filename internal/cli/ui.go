@@ -40,16 +40,9 @@ func Run(keyword string, sources []string, outDir string, number int, withCover 
 	fmt.Printf("🔍 正在搜索: %s ...\n", keyword)
 
 	// --- 1. 默认源设置逻辑 ---
-	// 如果用户没有指定源，默认使用所有支持的音乐源 (显式排除 bilibili)
+	// 如果用户没有指定源，默认使用排除 bilibili, joox, jamendo, fivesing 的源
 	if len(sources) == 0 {
-		// 使用 core.GetAllSourceNames() 获取固定顺序的源列表，然后排除 bilibili
-		allSources := core.GetAllSourceNames()
-		sources = []string{}
-		for _, src := range allSources {
-			if src != "bilibili" {
-				sources = append(sources, src)
-			}
-		}
+		sources = core.GetDefaultSourceNames()
 	}
 
 	var wg sync.WaitGroup
@@ -57,11 +50,6 @@ func Run(keyword string, sources []string, outDir string, number int, withCover 
 	var mu sync.Mutex
 
 	for _, src := range sources {
-		// 双重保险：在循环中再次强制排除 bilibili
-		if src == "bilibili" {
-			continue
-		}
-
 		wg.Add(1)
 		go func(s string) {
 			defer wg.Done()

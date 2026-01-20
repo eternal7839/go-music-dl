@@ -15,15 +15,9 @@ import (
 func RunInteractive() {
 	reader := bufio.NewReader(os.Stdin)
 
-	// 1. 获取所有源，并排除 bilibili
-	allSources := core.GetAllSourceNames()
-	var defaultSources []string
-	for _, s := range allSources {
-		if s != "bilibili" {
-			defaultSources = append(defaultSources, s)
-		}
-	}
-	fmt.Printf(">> 命令行模式已启动\n>> 当前启用源: %v (已排除 bilibili)\n", defaultSources)
+	// 1. 获取默认源（排除 bilibili, joox, jamendo, fivesing）
+	defaultSources := core.GetDefaultSourceNames()
+	fmt.Printf(">> 命令行模式已启动\n>> 当前启用源: %v (已排除 bilibili, joox, jamendo, fivesing)\n", defaultSources)
 
 	for {
 		fmt.Print("\n[搜索] 请输入歌名或歌手 (输入 q 退出): ")

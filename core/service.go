@@ -61,6 +61,25 @@ func GetAllSourceNames() []string {
 	}
 }
 
+// GetDefaultSourceNames 获取默认启用的源名称列表（排除 bilibili, joox, jamendo, fivesing）
+func GetDefaultSourceNames() []string {
+	allSources := GetAllSourceNames()
+	var defaultSources []string
+	excluded := map[string]bool{
+		"bilibili": true,
+		"joox":     true,
+		"jamendo":  true,
+		"fivesing": true,
+	}
+	
+	for _, source := range allSources {
+		if !excluded[source] {
+			defaultSources = append(defaultSources, source)
+		}
+	}
+	return defaultSources
+}
+
 // SearchAndFilter 支持指定源搜索 + 并发处理
 func SearchAndFilter(keyword string, selectedSources []string) ([]model.Song, error) {
 	var wg sync.WaitGroup

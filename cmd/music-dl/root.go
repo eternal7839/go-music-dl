@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/guohuiyuan/go-music-dl/core"
 	"github.com/guohuiyuan/go-music-dl/internal/cli"
 )
 
@@ -41,7 +42,7 @@ var rootCmd = &cobra.Command{
 		if keyword != "" {
 			// 默认源
 			if len(sources) == 0 {
-				sources = []string{"netease", "qq", "kugou", "kuwo", "migu"} // 排除 bilibili 除非显式指定? 或者默认带上
+				sources = core.GetDefaultSourceNames()
 			}
 			cli.Run(keyword, sources, outDir, number, withCover)
 			return
@@ -68,7 +69,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&keyword, "keyword", "k", "", "搜索关键字，歌名和歌手同时输入可以提高匹配")
 	rootCmd.Flags().StringVarP(&urlStr, "url", "u", "", "通过指定的歌曲URL下载音乐")
 	rootCmd.Flags().StringVarP(&playlist, "playlist", "p", "", "通过指定的歌单URL下载音乐")
-	rootCmd.Flags().StringSliceVarP(&sources, "source", "s", []string{"netease", "qq", "kugou", "kuwo", "migu"}, "Supported music source")
+	rootCmd.Flags().StringSliceVarP(&sources, "source", "s", core.GetDefaultSourceNames(), "Supported music source")
 	rootCmd.Flags().IntVarP(&number, "number", "n", 10, "Number of search results")
 	rootCmd.Flags().StringVarP(&outDir, "outdir", "o", ".", "Output directory")
 	rootCmd.Flags().StringVarP(&proxy, "proxy", "x", "", "Proxy (e.g. http://127.0.0.1:1087)")
