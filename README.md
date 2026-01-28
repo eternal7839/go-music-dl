@@ -209,6 +209,11 @@ go-music-dl/
 - [Tailwind CSS](https://tailwindcss.com/): CSS 框架
 - 以及 [musicdl](https://github.com/CharlesPikachu/musicdl) 和 [music-dl](https://github.com/0xHJK/music-dl) 带来的灵感。
 
+## todolist
+- [ ] 添加比特率
+- [ ] music-dl web之后，直接打开网页，不要手动点开。
+- [ ] 添加扫码添加cookie
+
 ## 📜 许可证
 
 本项目基于 [GNU Affero General Public License v3.0](https://github.com/guohuiyuan/go-music-dl/blob/main/LICENSE) 许可。
