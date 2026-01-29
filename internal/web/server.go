@@ -20,7 +20,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/guohuiyuan/go-music-dl/core"
 	
-	// 引入完整的11个源
 	"github.com/guohuiyuan/music-lib/bilibili"
 	"github.com/guohuiyuan/music-lib/fivesing"
 	"github.com/guohuiyuan/music-lib/jamendo"
@@ -47,7 +46,7 @@ const (
 	CookieFile   = "cookies.json"
 )
 
-// --- Cookie 管理 ---
+// --- Cookie 管理 (保持不变) ---
 type CookieManager struct {
 	mu      sync.RWMutex
 	cookies map[string]string
@@ -87,7 +86,7 @@ func (m *CookieManager) SetAll(c map[string]string) {
 	}
 }
 
-// --- 工厂函数 ---
+// --- 工厂函数 (保持不变) ---
 
 func getSearchFunc(source string) func(string) ([]model.Song, error) {
 	c := cm.Get(source)
@@ -166,7 +165,6 @@ func Start(port string) {
 	})
 
 	r.GET("/", func(c *gin.Context) {
-		// 修改点1: 传入 nil
 		renderIndex(c, nil, "", nil)
 	})
 
@@ -196,24 +194,21 @@ func Start(port string) {
 			}(src, fn)
 		}
 		wg.Wait()
-		// 修改点2: 传入 sources
 		renderIndex(c, allSongs, keyword, sources)
 	})
 
-	// Inspect (UI Display Only)
+	// Inspect (UI Display Only) - 逻辑保持不变
 	r.GET("/inspect", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
-		durStr := c.Query("duration") // 用于计算比特率
+		durStr := c.Query("duration")
 
 		var urlStr string
 		var err error
 		
-		// 1. 获取 URL (逻辑同 /download)
 		if src == "soda" {
 			cookie := cm.Get("soda")
 			sodaInst := soda.New(cookie)
-			// 注意：Inspect 不进行解密下载，只获取加密文件的下载链接信息
 			info, sErr := sodaInst.GetDownloadInfo(&model.Song{ID: id, Source: src})
 			if sErr != nil {
 				c.JSON(200, gin.H{"valid": false})
@@ -233,13 +228,8 @@ func Start(port string) {
 			}
 		}
 
-		// 2. 构造请求 (逻辑同 /download，但增加了 Range 头)
 		req, _ := http.NewRequest("GET", urlStr, nil)
-		
-		// 关键点：只请求前 2 个字节，用于探测文件是否存在及获取总大小
 		req.Header.Set("Range", "bytes=0-1") 
-
-		// 设置 Headers (完全复用 /download 的逻辑)
 		req.Header.Set("User-Agent", UA_Common)
 		if src == "bilibili" { req.Header.Set("Referer", Ref_Bilibili) }
 		if src == "migu" { 
@@ -248,7 +238,6 @@ func Start(port string) {
 		}
 		if src == "qq" { req.Header.Set("Referer", "http://y.qq.com") }
 
-		// 3. 发送探测请求
 		client := &http.Client{Timeout: 5 * time.Second}
 		resp, err := client.Do(req)
 		
@@ -257,28 +246,21 @@ func Start(port string) {
 
 		if err == nil {
 			defer resp.Body.Close()
-			// 206 Partial Content 是 Range 请求成功的标准返回
-			// 200 OK 表示服务器不支持 Range，返回了整个文件（依然有效，但需要从 Content-Length 取值）
 			if resp.StatusCode == 200 || resp.StatusCode == 206 {
 				valid = true
-				
-				// 尝试从 Content-Range 解析真实文件大小 (格式: bytes 0-1/123456)
 				cr := resp.Header.Get("Content-Range")
 				if parts := strings.Split(cr, "/"); len(parts) == 2 {
 					size, _ = strconv.ParseInt(parts[1], 10, 64)
 				} else {
-					// 如果没有 Content-Range，则使用 Content-Length
 					size = resp.ContentLength
 				}
 			}
 		}
 
-		// 4. 计算比特率
 		bitrate := "-"
 		if valid && size > 0 {
 			dur, _ := strconv.Atoi(durStr)
 			if dur > 0 {
-				// size * 8 (bits) / duration (seconds) / 1000 => kbps
 				kbps := int((size * 8) / int64(dur) / 1000)
 				bitrate = fmt.Sprintf("%d kbps", kbps)
 			}
@@ -292,7 +274,8 @@ func Start(port string) {
 		})
 	})
 
-	// Download (Memory Buffer)
+	// --- 重点修改区域: Download 接口 ---
+	// 实现了 HTTP Proxy 模式，支持 Range 头转发，从而支持拖动进度条
 	r.GET("/download", func(c *gin.Context) {
 		id := c.Query("id")
 		source := c.Query("source")
@@ -309,8 +292,8 @@ func Start(port string) {
 		tempSong := &model.Song{ID: id, Source: source, Name: name, Artist: artist}
 		filename := fmt.Sprintf("%s - %s.mp3", artist, name)
 
-		var finalData []byte
-
+		// 特殊处理 Soda: 需要解密，必须下载完整文件到内存
+		// 如果想支持 Soda 拖动，需要改为下载到临时文件后 ServeFile，这里保留内存逻辑作为 fallback
 		if source == "soda" {
 			cookie := cm.Get("soda")
 			sodaInst := soda.New(cookie)
@@ -328,52 +311,79 @@ func Start(port string) {
 			}
 			defer resp.Body.Close()
 			encryptedData, _ := io.ReadAll(resp.Body)
-			finalData, err = soda.DecryptAudio(encryptedData, info.PlayAuth)
+			finalData, err := soda.DecryptAudio(encryptedData, info.PlayAuth)
 			if err != nil {
 				c.String(500, "Decrypt failed")
 				return
 			}
-		} else {
-			dlFunc := getDownloadFunc(source)
-			if dlFunc == nil {
-				c.String(400, "Unknown source")
-				return
-			}
+			setDownloadHeader(c, filename)
+			http.ServeContent(c.Writer, c.Request, filename, time.Now(), bytes.NewReader(finalData))
+			return
+		}
 
-			downloadUrl, err := dlFunc(tempSong)
-			if err != nil {
-				c.String(404, "Failed to get URL")
-				return
-			}
+		// --- 通用源流式处理 (Stream Proxy) ---
+		
+		// 1. 获取真实下载链接
+		dlFunc := getDownloadFunc(source)
+		if dlFunc == nil {
+			c.String(400, "Unknown source")
+			return
+		}
 
-			req, _ := http.NewRequest("GET", downloadUrl, nil)
-			req.Header.Set("User-Agent", UA_Common)
-			if source == "bilibili" { req.Header.Set("Referer", Ref_Bilibili) }
-			if source == "migu" { 
-				req.Header.Set("User-Agent", UA_Mobile)
-				req.Header.Set("Referer", Ref_Migu) 
-			}
-			if source == "qq" { req.Header.Set("Referer", "http://y.qq.com") }
+		downloadUrl, err := dlFunc(tempSong)
+		if err != nil {
+			c.String(404, "Failed to get URL")
+			return
+		}
 
-			resp, err := (&http.Client{}).Do(req)
-			if err != nil {
-				c.String(502, "Download failed")
-				return
-			}
-			defer resp.Body.Close()
-			
-			finalData, err = io.ReadAll(resp.Body)
-			if err != nil {
-				c.String(500, "Read body failed")
-				return
+		// 2. 构建请求，转发 Header
+		req, _ := http.NewRequest("GET", downloadUrl, nil)
+		
+		// 关键点：将浏览器的 Range 头转发给上游服务器
+		// 浏览器想听 10秒-20秒 的数据，就会发 Range 头，我们必须透传
+		if rangeHeader := c.GetHeader("Range"); rangeHeader != "" {
+			req.Header.Set("Range", rangeHeader)
+		}
+
+		// 设置特定源的 Headers
+		req.Header.Set("User-Agent", UA_Common)
+		if source == "bilibili" { req.Header.Set("Referer", Ref_Bilibili) }
+		if source == "migu" { 
+			req.Header.Set("User-Agent", UA_Mobile)
+			req.Header.Set("Referer", Ref_Migu) 
+		}
+		if source == "qq" { req.Header.Set("Referer", "http://y.qq.com") }
+
+		// 3. 发起请求 (不读取 Body，建立管道)
+		// 注意：不要设置太短的 Timeout，因为流式传输可能持续很久
+		client := &http.Client{} 
+		resp, err := client.Do(req)
+		if err != nil {
+			c.String(502, "Upstream stream error")
+			return
+		}
+		defer resp.Body.Close()
+
+		// 4. 将上游的 Headers 转发给浏览器
+		// 尤其是 Content-Range, Content-Length, Content-Type, Accept-Ranges
+		for k, v := range resp.Header {
+			// 过滤掉一些可能引起问题的 Header，其他的全部转发
+			if k != "Transfer-Encoding" && k != "Date" {
+				c.Writer.Header()[k] = v
 			}
 		}
 
+		// 5. 强制设置文件名 (这必须在 c.Status 之前调用)
 		setDownloadHeader(c, filename)
-		http.ServeContent(c.Writer, c.Request, filename, time.Now(), bytes.NewReader(finalData))
+
+		// 6. 设置状态码 (200 OK 或 206 Partial Content)
+		c.Status(resp.StatusCode)
+
+		// 7. 直接将上游 Body 拷贝到下游 Writer，不经过内存 buffer
+		io.Copy(c.Writer, resp.Body)
 	})
 
-	// Download Lyric
+	// Download Lyric (保持不变)
 	r.GET("/download_lrc", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
@@ -397,7 +407,7 @@ func Start(port string) {
 		c.String(200, lrc)
 	})
 
-	// Download Cover
+	// Download Cover (保持不变)
 	r.GET("/download_cover", func(c *gin.Context) {
 		u := c.Query("url")
 		if u == "" { return }
@@ -409,7 +419,7 @@ func Start(port string) {
 		}
 	})
 
-	// Playback Lyric
+	// Playback Lyric (保持不变)
 	r.GET("/lyric", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
@@ -431,7 +441,6 @@ func Start(port string) {
 	r.Run(":" + port)
 }
 
-// 修改点3: 函数签名增加了 selected 参数
 func renderIndex(c *gin.Context, songs []model.Song, q string, selected []string) {
 	allSrc := core.GetAllSourceNames()
 	desc := make(map[string]string)
@@ -442,7 +451,7 @@ func renderIndex(c *gin.Context, songs []model.Song, q string, selected []string
 		"AllSources":         allSrc,
 		"DefaultSources":     core.GetDefaultSourceNames(),
 		"SourceDescriptions": desc,
-		"Selected":           selected, // 传递选中的源
+		"Selected":           selected,
 	})
 }
 
@@ -454,6 +463,8 @@ func formatSize(s int64) string {
 func setDownloadHeader(c *gin.Context, filename string) {
 	encoded := url.QueryEscape(filename)
 	encoded = strings.ReplaceAll(encoded, "+", "%20")
+	// 设置 Content-Disposition 使得浏览器认为这是个文件，但对于 audio 标签，它会忽略 attachment 改为 inline 播放
+	// 如果你希望在浏览器直接打开而不是下载，可以改为 inline，但为了下载功能，保留 attachment 并在前端 audio 标签使用即可
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"; filename*=utf-8''%s", encoded, encoded))
 }
 
