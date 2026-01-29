@@ -179,13 +179,16 @@
 
         .actions { display: flex; gap: 10px; }
         .btn-circle {
-            width: 40px; height: 40px; border-radius: 50%; border: none;
+            width: 36px; height: 36px; /* 稍微调小一点 */
+            border-radius: 50%; border: none;
             display: flex; align-items: center; justify-content: center;
             cursor: pointer; transition: all 0.2s; text-decoration: none;
             position: relative; z-index: 10;
+            font-size: 14px;
         }
         .btn-play { background: var(--primary-gradient); color: white; box-shadow: 0 4px 10px rgba(102, 126, 234, 0.3); }
         .btn-play:hover { transform: scale(1.1); }
+        
         .btn-dl { background: #f7fafc; color: var(--text-sub); border: 1px solid #e2e8f0; }
         .btn-dl:hover { border-color: var(--primary-color); color: var(--primary-color); }
 
@@ -258,7 +261,6 @@
                 <input type="text" name="q" value="{{.Keyword}}" placeholder="搜索歌曲、歌手、专辑..." required autocomplete="off">
                 <button type="submit" class="search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
             </div>
-
             <div class="source-selector">
                 <div class="source-header">
                     <span class="source-title">搜索源设置</span>
@@ -310,18 +312,32 @@
                         <span class="tag tag-src">{{ .Source }}</span>
                         {{ if .FormatDuration }}<span class="tag">{{ .FormatDuration }}</span>{{ end }}
                         {{ if .FormatSize }}<span class="tag">{{ .FormatSize }}</span>{{ end }}
+                        {{ if .FormatBitrate }}<span class="tag">{{ .FormatBitrate }}</span>{{ end }}
                     </div>
                 </div>
                 
                 <div class="actions">
-                    <button type="button" class="btn-circle btn-play" 
+                    <button type="button" class="btn-circle btn-play" title="播放"
                             onclick="playMusic('{{.ID}}', '{{.Source}}', '{{.Name}}', '{{.Artist}}', '{{.Cover}}')">
                         <i class="fa-solid fa-play"></i>
                     </button>
+                    
                     <a href="/download?id={{ .ID }}&source={{ .Source }}&name={{ .Name }}&artist={{ .Artist }}" 
-                       class="btn-circle btn-dl" target="_blank" download="{{ .Artist }} - {{ .Name }}.mp3">
+                       class="btn-circle btn-dl" title="下载歌曲" target="_blank">
                         <i class="fa-solid fa-download"></i>
                     </a>
+
+                    <a href="/download_lrc?id={{ .ID }}&source={{ .Source }}&name={{ .Name }}&artist={{ .Artist }}" 
+                       class="btn-circle btn-dl" title="下载歌词" target="_blank">
+                        <i class="fa-solid fa-file-lines"></i>
+                    </a>
+
+                    {{ if .Cover }}
+                    <a href="/download_cover?url={{ .Cover }}&name={{ .Name }}&artist={{ .Artist }}" 
+                       class="btn-circle btn-dl" title="下载封面" target="_blank">
+                        <i class="fa-regular fa-image"></i>
+                    </a>
+                    {{ end }}
                 </div>
             </li>
             {{ end }}
@@ -341,7 +357,6 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // 全选/清空逻辑
         const checkboxes = document.querySelectorAll('.source-checkbox');
         document.getElementById('btn-all').onclick = () => checkboxes.forEach(cb => cb.checked = true);
         document.getElementById('btn-none').onclick = () => checkboxes.forEach(cb => cb.checked = false);
@@ -366,7 +381,7 @@
         ap.list.add({
             name: name,
             artist: artist,
-            url: `/download?id=${encodeURIComponent(id)}&source=${source}`,
+            url: `/download?id=${encodeURIComponent(id)}&source=${source}&name=${encodeURIComponent(name)}&artist=${encodeURIComponent(artist)}`,
             cover: cover || 'https://via.placeholder.com/150?text=Music',
             lrc: `/lyric?id=${encodeURIComponent(id)}&source=${source}`,
             theme: '#667eea'

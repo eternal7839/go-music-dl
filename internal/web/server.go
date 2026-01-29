@@ -13,16 +13,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/guohuiyuan/go-music-dl/core"
-	"github.com/guohuiyuan/music-lib/model"
-	"github.com/guohuiyuan/music-lib/soda"
-	"github.com/guohuiyuan/music-lib/kuwo"
-	"github.com/guohuiyuan/music-lib/netease"
-	"github.com/guohuiyuan/music-lib/qq"
-	"github.com/guohuiyuan/music-lib/kugou"
-	"github.com/guohuiyuan/music-lib/qianqian"
-	"github.com/guohuiyuan/music-lib/migu"
-	"github.com/guohuiyuan/music-lib/joox"
 	"github.com/guohuiyuan/music-lib/fivesing"
+	"github.com/guohuiyuan/music-lib/joox"
+	"github.com/guohuiyuan/music-lib/kugou"
+	"github.com/guohuiyuan/music-lib/kuwo"
+	"github.com/guohuiyuan/music-lib/migu"
+	"github.com/guohuiyuan/music-lib/model"
+	"github.com/guohuiyuan/music-lib/netease"
+	"github.com/guohuiyuan/music-lib/qianqian"
+	"github.com/guohuiyuan/music-lib/qq"
+	"github.com/guohuiyuan/music-lib/soda"
+	"github.com/guohuiyuan/music-lib/utils" // 引入 utils 以便使用 Get 方法
 )
 
 //go:embed templates/*
@@ -40,31 +41,27 @@ func Start(port string) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
-	// 使用 embed.FS 加载模板
 	tmpl := template.Must(template.New("").ParseFS(templateFS, "templates/*.html"))
 	r.SetHTMLTemplate(tmpl)
 
-	// 服务 favicon
 	r.GET("/icon.png", func(c *gin.Context) {
 		c.FileFromFS("templates/icon.png", http.FS(templateFS))
 	})
 
-	// 首页
 	r.GET("/", func(c *gin.Context) {
 		allSources := core.GetAllSourceNames()
 		sourceDescriptions := make(map[string]string)
 		for _, source := range allSources {
 			sourceDescriptions[source] = core.GetSourceDescription(source)
 		}
-		
+
 		c.HTML(http.StatusOK, "index.html", gin.H{
-			"AllSources": allSources,
-			"DefaultSources": core.GetDefaultSourceNames(),
+			"AllSources":         allSources,
+			"DefaultSources":     core.GetDefaultSourceNames(),
 			"SourceDescriptions": sourceDescriptions,
 		})
 	})
 
-		// 搜索接口
 	r.GET("/search", func(c *gin.Context) {
 		keyword := c.Query("q")
 		sources := c.QueryArray("sources")
@@ -98,69 +95,75 @@ func Start(port string) {
 		for _, source := range allSources {
 			sourceDescriptions[source] = core.GetSourceDescription(source)
 		}
-		
+
 		c.HTML(http.StatusOK, "index.html", gin.H{
-			"Result":     formattedSongs,
-			"Keyword":    keyword,
-			"AllSources": allSources,
-			"DefaultSources": core.GetDefaultSourceNames(),
+			"Result":             formattedSongs,
+			"Keyword":            keyword,
+			"AllSources":         allSources,
+			"DefaultSources":     core.GetDefaultSourceNames(),
 			"SourceDescriptions": sourceDescriptions,
-			"Selected":   sources,
+			"Selected":           sources,
 		})
 	})
 
-	// [新增] 歌词接口
+	// 获取歌词文本 (用于播放器显示)
 	r.GET("/lyric", func(c *gin.Context) {
 		id := c.Query("id")
 		source := c.Query("source")
-
-		if id == "" || source == "" {
-			c.String(http.StatusBadRequest, "[00:00.00] 缺少参数")
-			return
-		}
-
-		var lrc string
-		var err error
-
-		// 根据源获取歌词
-		switch source {
-		case "soda":
-			lrc, err = soda.GetLyrics(&model.Song{ID: id, Source: source})
-		case "kuwo":
-			lrc, err = kuwo.GetLyrics(&model.Song{ID: id, Source: source})
-		case "netease":
-			lrc, err = netease.GetLyrics(&model.Song{ID: id, Source: source})
-		case "qq":
-			lrc, err = qq.GetLyrics(&model.Song{ID: id, Source: source})
-		case "kugou":
-			lrc, err = kugou.GetLyrics(&model.Song{ID: id, Source: source})
-		case "qianqian":
-			lrc, err = qianqian.GetLyrics(&model.Song{ID: id, Source: source})
-		case "migu":
-			lrc, err = migu.GetLyrics(&model.Song{ID: id, Source: source})
-		case "joox":
-			lrc, err = joox.GetLyrics(&model.Song{ID: id, Source: source})
-		case "fivesing":
-			lrc, err = fivesing.GetLyrics(&model.Song{ID: id, Source: source})
-		default:
-			lrc = "[00:00.00] 暂不支持该源歌词"
-		}
-
+		lrc, err := fetchLyrics(id, source)
 		if err != nil {
 			fmt.Printf("获取歌词失败: %v\n", err)
 			c.String(http.StatusOK, "[00:00.00] 获取歌词失败")
 			return
 		}
-
 		if lrc == "" {
 			lrc = "[00:00.00] 暂无歌词"
 		}
-
-		// 直接返回 LRC 文本
 		c.String(http.StatusOK, lrc)
 	})
 
-	// 下载/播放接口 (改为内存播放以支持进度条拖动)
+	// [新增] 下载歌词文件 (.lrc)
+	r.GET("/download_lrc", func(c *gin.Context) {
+		id := c.Query("id")
+		source := c.Query("source")
+		songName := c.Query("name")
+		artist := c.Query("artist")
+
+		lrc, err := fetchLyrics(id, source)
+		if err != nil || lrc == "" {
+			c.String(http.StatusNotFound, "歌词未找到")
+			return
+		}
+
+		filename := fmt.Sprintf("%s - %s.lrc", artist, songName)
+		setDownloadHeader(c, filename)
+		c.String(http.StatusOK, lrc)
+	})
+
+	// [新增] 下载封面图片 (.jpg)
+	r.GET("/download_cover", func(c *gin.Context) {
+		coverUrl := c.Query("url")
+		songName := c.Query("name")
+		artist := c.Query("artist")
+
+		if coverUrl == "" {
+			c.String(http.StatusBadRequest, "无封面链接")
+			return
+		}
+
+		// 下载图片数据
+		data, err := utils.Get(coverUrl, utils.WithHeader("User-Agent", UA_Common))
+		if err != nil {
+			c.String(http.StatusBadGateway, "下载封面失败: %v", err)
+			return
+		}
+
+		filename := fmt.Sprintf("%s - %s.jpg", artist, songName)
+		setDownloadHeader(c, filename)
+		c.Data(http.StatusOK, "image/jpeg", data)
+	})
+
+	// 下载/播放接口
 	r.GET("/download", func(c *gin.Context) {
 		id := c.Query("id")
 		source := c.Query("source")
@@ -172,31 +175,23 @@ func Start(port string) {
 			return
 		}
 
-		// 准备文件名
 		if songName == "" { songName = "Unknown" }
 		if artist == "" { artist = "Unknown" }
-		filename := generateFilename(songName, artist)
-		encodedFilename := url.QueryEscape(filename)
-		encodedFilename = strings.ReplaceAll(encodedFilename, "+", "%20")
-		contentDisposition := fmt.Sprintf("attachment; filename=\"music.mp3\"; filename*=utf-8''%s", encodedFilename)
-
+		
+		tempSong := &model.Song{ID: id, Source: source, Name: songName, Artist: artist}
+		filename := tempSong.Filename()
+		
 		var finalData []byte
 
-		// === 分支处理：获取音频数据到内存 ===
 		if source == "soda" {
-			// --- Soda 逻辑: 下载 -> 解密 ---
-			tempSong := &model.Song{ID: id, Source: source}
+			// Soda 下载流程
 			info, err := soda.GetDownloadInfo(tempSong)
 			if err != nil {
 				c.String(http.StatusInternalServerError, "获取Soda信息失败: %v", err)
 				return
 			}
-
-			// 下载加密数据
-			// 注意：Soda 下载也需要 UA
 			req, _ := http.NewRequest("GET", info.URL, nil)
 			req.Header.Set("User-Agent", UA_Common)
-			
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			if err != nil {
@@ -204,41 +199,29 @@ func Start(port string) {
 				return
 			}
 			defer resp.Body.Close()
-
 			encryptedData, err := io.ReadAll(resp.Body)
 			if err != nil {
 				c.String(http.StatusInternalServerError, "读取Soda数据失败: %v", err)
 				return
 			}
-
-			// 解密
 			finalData, err = soda.DecryptAudio(encryptedData, info.PlayAuth)
 			if err != nil {
 				c.String(http.StatusInternalServerError, "解密失败: %v", err)
 				return
 			}
-
 		} else {
-			// --- 通用逻辑: 获取 URL -> 下载 (带Header) ---
-			tempSong := &model.Song{ID: id, Source: source, Name: songName, Artist: artist}
+			// 通用下载流程
 			downloadUrl, err := core.GetDownloadURL(tempSong)
-			if err != nil {
+			if err != nil || downloadUrl == "" {
 				c.String(http.StatusInternalServerError, "获取链接失败: %v", err)
 				return
 			}
-			if downloadUrl == "" {
-				c.String(http.StatusBadRequest, "无有效下载链接")
-				return
-			}
-
-			// 构造请求 (带防盗链 Header)
 			req, err := http.NewRequest("GET", downloadUrl, nil)
 			if err != nil {
 				c.String(http.StatusInternalServerError, "构造请求失败: %v", err)
 				return
 			}
-
-			// 添加伪装 Header
+			// 设置伪装头
 			switch source {
 			case "bilibili":
 				req.Header.Set("User-Agent", UA_Common)
@@ -246,13 +229,9 @@ func Start(port string) {
 			case "migu":
 				req.Header.Set("User-Agent", UA_Mobile)
 				req.Header.Set("Referer", Ref_Migu)
-			case "kuwo":
-				req.Header.Set("User-Agent", UA_Common)
 			default:
 				req.Header.Set("User-Agent", UA_Common)
 			}
-
-			// 执行下载
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			if err != nil {
@@ -260,8 +239,6 @@ func Start(port string) {
 				return
 			}
 			defer resp.Body.Close()
-
-			// 将全部数据读入内存
 			finalData, err = io.ReadAll(resp.Body)
 			if err != nil {
 				c.String(http.StatusInternalServerError, "读取源数据失败: %v", err)
@@ -269,14 +246,7 @@ func Start(port string) {
 			}
 		}
 
-		// === 统一响应：使用 ServeContent 支持拖动 ===
-		
-		// 1. 设置下载文件名 Header
-		c.Header("Content-Disposition", contentDisposition)
-		
-		// 2. 使用 http.ServeContent
-		// 这个函数会自动处理 Range 头、Content-Length 和 Content-Type
-		// 让浏览器可以随意拖动进度条
+		setDownloadHeader(c, filename)
 		http.ServeContent(c.Writer, c.Request, filename, time.Now(), bytes.NewReader(finalData))
 	})
 
@@ -284,34 +254,44 @@ func Start(port string) {
 	r.Run(":" + port)
 }
 
-// 辅助函数：格式化时长
-func formatDuration(seconds int) string {
-	if seconds == 0 {
-		return "-"
+// 辅助函数：统一设置下载头
+func setDownloadHeader(c *gin.Context, filename string) {
+	encodedFilename := url.QueryEscape(filename)
+	encodedFilename = strings.ReplaceAll(encodedFilename, "+", "%20")
+	contentDisposition := fmt.Sprintf("attachment; filename=\"%s\"; filename*=utf-8''%s", encodedFilename, encodedFilename)
+	c.Header("Content-Disposition", contentDisposition)
+}
+
+// 辅助函数：统一获取歌词逻辑
+func fetchLyrics(id, source string) (string, error) {
+	var lrc string
+	var err error
+	song := &model.Song{ID: id, Source: source}
+
+	switch source {
+	case "soda": lrc, err = soda.GetLyrics(song)
+	case "kuwo": lrc, err = kuwo.GetLyrics(song)
+	case "netease": lrc, err = netease.GetLyrics(song)
+	case "qq": lrc, err = qq.GetLyrics(song)
+	case "kugou": lrc, err = kugou.GetLyrics(song)
+	case "qianqian": lrc, err = qianqian.GetLyrics(song)
+	case "migu": lrc, err = migu.GetLyrics(song)
+	case "joox": lrc, err = joox.GetLyrics(song)
+	case "fivesing": lrc, err = fivesing.GetLyrics(song)
+	default: return "", nil
 	}
+	return lrc, err
+}
+
+func formatDuration(seconds int) string {
+	if seconds == 0 { return "-" }
 	min := seconds / 60
 	sec := seconds % 60
 	return fmt.Sprintf("%02d:%02d", min, sec)
 }
 
-// 辅助函数：格式化大小
 func formatSize(size int64) string {
-	if size == 0 {
-		return "-"
-	}
+	if size == 0 { return "-" }
 	mb := float64(size) / 1024 / 1024
 	return fmt.Sprintf("%.2f MB", mb)
-}
-
-// 辅助函数：生成文件名
-func generateFilename(name, artist string) string {
-	clean := func(s string) string {
-		illegalChars := []string{"\\", "/", ":", "*", "?", "\"", "<", ">", "|"}
-		result := s
-		for _, char := range illegalChars {
-			result = strings.ReplaceAll(result, char, "_")
-		}
-		return result
-	}
-	return fmt.Sprintf("%s - %s.mp3", clean(artist), clean(name))
 }

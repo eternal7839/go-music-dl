@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/guohuiyuan/go-music-dl/core"
+
 	"github.com/guohuiyuan/go-music-dl/internal/cli"
 )
 
@@ -13,70 +14,85 @@ var (
 	showVersion bool
 	keyword     string
 	urlStr      string
-	playlist    string
 	sources     []string
-	number      int
 	outDir      string
-	proxy       string
-	verbose     bool
-	withLyrics  bool
 	withCover   bool
-	noMerge     bool
-	filter      string
-	play        bool
+	withLyrics  bool 
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "music-dl [OPTIONS]",
-	Short: "Search and download music from netease, qq, kugou, baidu and xiami.",
-	Example: `  music-dl -k "周杰伦"
-  music-dl web`, // 增加 web 子命令提示
+	Use:   "music-dl",
+	Short: "聚合音乐搜索下载工具 (支持多源/TUI/Web/封面/歌词)",
+	Long: `Go Music DL 是一个基于命令行的聚合音乐搜索和下载工具。
+
+支持的音乐源:
+  - netease   (网易云音乐)
+  - qq        (QQ音乐)
+  - kugou     (酷狗音乐)
+  - kuwo      (酷我音乐)
+  - migu      (咪咕音乐)
+  - qianqian  (千千音乐)
+  - soda      (汽水音乐)
+  - fivesing  (5sing原创)
+  - ... 以及 jamendo, joox, bilibili 等
+
+特性:
+  - TUI 交互式界面，支持空格多选
+  - Web 网页版界面 (使用 'music-dl web' 启动)
+  - 支持下载高品质音频 (部分源支持无损)
+  - 自动下载封面图片 (需开启 --cover)
+  - 自动下载 LRC 歌词 (需开启 --lyrics)`,
+	Example: `  # 1. 基础搜索 (默认搜索所有源)
+  music-dl -k "周杰伦"
+
+  # 2. 指定源搜索 (例如：只搜网易云和QQ)
+  music-dl -k "林俊杰" -s netease,qq
+
+  # 3. 全功能下载 (指定目录 + 封面 + 歌词)
+  music-dl -k "陈奕迅" -o "MyMusic" --cover --lyrics
+
+  # 4. 启动 Web 界面
+  music-dl web
+
+  # 5. 直接进入 TUI 交互模式 (不带参数)
+  music-dl`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if showVersion {
-			fmt.Println("music-dl version v1.0.0")
+			fmt.Println("music-dl version v1.3.1 (TUI Version)")
 			return
 		}
 
-		// 优先处理 Web 模式（虽然通常它是子命令，但也可以通过 flag 触发逻辑，这里我们保留子命令方式，但也兼容直接运行）
-		// 如果有关键字，进入搜索模式
-		if keyword != "" {
-			// 默认源
-			if len(sources) == 0 {
-				sources = core.GetDefaultSourceNames()
-			}
-			cli.Run(keyword, sources, outDir, number, withCover)
-			return
+		// [修正] 默认目录设为 "downloads" 而不是 "."
+		if outDir == "" {
+			outDir = "downloads"
+		}
+		
+		// 确保目录存在
+		if _, err := os.Stat(outDir); os.IsNotExist(err) {
+			_ = os.MkdirAll(outDir, 0755)
 		}
 
-		// 如果有 URL
+		// 如果有 URL (功能未完成，先保留提示)
 		if urlStr != "" {
 			fmt.Println("🚀 URL 下载功能开发中: ", urlStr)
 			return
 		}
-		
-		// 如果没有参数，启动交互式 CLI
-		fmt.Println("🎵 欢迎使用 Go Music DL 交互式命令行")
-		fmt.Println("   输入 'q' 退出程序")
-		fmt.Println("   或直接输入歌名/歌手进行搜索")
-		fmt.Println()
-		cli.RunInteractive()
+
+		// 启动 TUI 界面
+		cli.StartUI(keyword, sources, outDir, withCover, withLyrics)
 	},
 }
 
 func init() {
 	// 绑定 Flags
-	rootCmd.Flags().BoolVar(&showVersion, "version", false, "Show the version and exit.")
-	rootCmd.Flags().StringVarP(&keyword, "keyword", "k", "", "搜索关键字，歌名和歌手同时输入可以提高匹配")
-	rootCmd.Flags().StringVarP(&urlStr, "url", "u", "", "通过指定的歌曲URL下载音乐")
-	rootCmd.Flags().StringVarP(&playlist, "playlist", "p", "", "通过指定的歌单URL下载音乐")
-	rootCmd.Flags().StringSliceVarP(&sources, "source", "s", core.GetDefaultSourceNames(), "Supported music source")
-	rootCmd.Flags().IntVarP(&number, "number", "n", 10, "Number of search results")
-	rootCmd.Flags().StringVarP(&outDir, "outdir", "o", ".", "Output directory")
-	rootCmd.Flags().StringVarP(&proxy, "proxy", "x", "", "Proxy (e.g. http://127.0.0.1:1087)")
-	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose mode")
-	rootCmd.Flags().BoolVar(&withLyrics, "lyrics", false, "同时下载歌词")
-	rootCmd.Flags().BoolVar(&withCover, "cover", false, "同时下载封面")
-	rootCmd.Flags().BoolVar(&noMerge, "nomerge", false, "不对搜索结果列表排序和去重")
-	rootCmd.Flags().StringVar(&filter, "filter", "", "按文件大小和歌曲时长过滤搜索结果")
-	rootCmd.Flags().BoolVar(&play, "play", false, "开启下载后自动播放功能")
+	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "显示版本信息")
+	rootCmd.Flags().StringVarP(&keyword, "keyword", "k", "", "搜索关键字")
+	rootCmd.Flags().StringVarP(&urlStr, "url", "u", "", "通过指定的歌曲URL下载音乐 (开发中)")
+	
+	// [优化] 明确提示可用源
+	rootCmd.Flags().StringSliceVarP(&sources, "sources", "s", []string{}, "指定搜索源，用逗号分隔 (e.g. netease,qq,kugou)")
+	
+	rootCmd.Flags().StringVarP(&outDir, "outdir", "o", "downloads", "指定下载目录")
+	rootCmd.Flags().BoolVar(&withCover, "cover", false, "同时下载封面图片")
+	
 }

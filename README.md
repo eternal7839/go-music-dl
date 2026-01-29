@@ -51,7 +51,7 @@ go build -o music-dl ./cmd/music-dl
 
 然后打开浏览器，访问 `http://localhost:8080` 就可以看到搜索界面了。
 
-![Web UI](https://raw.githubusercontent.com/guohuiyuan/go-music-dl/main/screenshots/web.png)
+![Web UI](./screenshots/web.png)
 
 #### 方式二：在命令行里敲敲敲
 
@@ -62,7 +62,7 @@ go build -o music-dl ./cmd/music-dl
 
 程序会进入一个交互界面，让你挑选要下载的歌曲。
 
-![TUI](https://raw.githubusercontent.com/guohuiyuan/go-music-dl/main/screenshots/tui.png)
+![TUI](./screenshots/tui.png)
 
 是不是很简单？更详细的用法请继续往下看。
 
