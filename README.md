@@ -1,223 +1,139 @@
-# 🎵 Go Music DL: 你的全能音乐下载神器 🎵
+# 🎵 Go Music DL: 你的全能音乐下载利器
 
-还在为找歌、下歌烦恼吗？`Go Music DL` 是一款为你量身打造的音乐下载工具，它将强大的命令行功能与简洁的网页界面合二为一，让你轻松搜索、试听、下载来自多个主流音乐平台的歌曲。
+`Go Music DL` 是一款为你精心打造的音乐聚合搜索与下载工具。它巧妙地将强大的命令行功能与清爽的网页界面融为一体，让你能像探囊取物一样，轻松搜索、试听并下载来自十多个主流音乐平台的歌曲。
 
-无论你是喜欢在终端里敲命令的极客，还是偏爱在浏览器里点点鼠标的普通用户，`Go Music DL` 都能给你带来丝滑流畅的音乐体验。
+无论你是习惯在终端里挥洒自如的极客，还是更喜欢在浏览器里惬意点击的用户，`Go Music DL` 都能为你带来如丝般顺滑的音乐获取新体验。
 
-## ✨ 亮点功能
+![Web UI](./screenshots/web.png)
+_简洁直观的 Web 界面，所见即所得。_
 
-- 💻 **双模操作，任你选择**: 提供酷炫的 **命令行终端 (CLI)** 和简洁的 **网页 (Web)** 两种模式，满足不同使用习惯。
-- 🌐 **聚合搜索，一网打尽**: 支持 **网易云、QQ音乐、酷狗** 等十多个主流音乐平台，想听的歌基本都能找到。
-- 🎨 **精美界面，赏心悦目**:
-  - **CLI**: 交互式表格，键盘操作，极客范十足。
-  - **Web**: 现代化设计，还有可爱的 **Live2D 看板娘** 陪伴你。
-- 📥 **智能下载，井井有条**:
-  - 自动将下载的音乐命名为 `歌手 - 歌名.mp3`。
-  - 歌曲封面、歌词也能一并下载，信息超完整。
-- 🎧 **在线试听，同步歌词**: 内置网页播放器，下载前可以先听为快，还支持滚动歌词。
-- 🔓 **特殊解锁**: 支持解密**汽水音乐**的加密音频。
-- 💰 **免费优先，智能过滤**: 自动跳过 VIP 和付费歌曲，为你筛选出可免费下载的音源。
-- 🔢 **花式选择，批量下载**: 支持 `1-3`、`1 3 5` 等多种方式，一次性下载多首歌曲。
+![TUI](./screenshots/tui.png)
+_功能强大的 TUI 终端界面，复古又高效。_
 
-## 🚀 快速上手
+## ✨ 它为何与众不同？
 
-只需几步，即可开启你的音乐之旅！
+- 💻 **双模操作，随心切换**:
+  - **Web 模式**: 启动一个本地网页服务，在浏览器中享受搜索、试听、下载的完整体验，还支持实时歌词滚动，让你边听边看。
+  - **CLI/TUI 模式**: 在命令行中快速执行搜索，或沉浸于交互式的 TUI 界面，通过键盘行云流水般地完成批量下载。
 
-### 1. 安装
+- 🌐 **聚合搜索，一网打尽**: 无需在各大音乐 App 之间反复横跳。我们支持 **网易云、QQ 音乐、酷狗** 等十多个主流平台，你想听的歌，几乎都在这里。
 
-首先，请确保你的电脑上安装了 **Go (1.20 或更高版本)** 和 **Git**。
+- 📥 **智能下载，井然有序**:
+  - 自动将下载的音乐命名为 `歌手 - 歌名.mp3`，并贴心地为你清理文件名中的非法字符。
+  - 支持一键下载歌曲封面和 `.lrc` 歌词文件，让你的音乐收藏更完整。
 
-```bash
-# 1. 克隆项目到你的电脑
-git clone https://github.com/guohuiyuan/go-music-dl.git
+- 🎧 **在线试听，歌词同步**: 在 Web 模式下，我们内置了现代化的播放器。下载前先听一听，感受卡拉OK风格的逐字歌词滚动，确保每一首都对味。
 
-# 2. 进入项目目录
-cd go-music-dl
+- 🔓 **特殊格式，轻松搞定**: 内置对**汽水音乐**等平台特殊音频格式的解密功能，下载即得，无需转换，直接畅听。
 
-# 3. 编译项目
-go build -o music-dl ./cmd/music-dl
-```
+- 💰 **免费优先，智能筛选**: 自动帮你跳过大部分需要 VIP 或付费的歌曲，为你精准筛选出可以免费获取的优质音源。
 
-看到目录下多出了一个 `music-dl` (或 `music-dl.exe`) 文件，就说明成功啦！
+## 🚀 三分钟快速上手
 
-### 2. 使用
+### 1. 下载程序
 
-#### 方式一：在网页中点点点
+前往 [GitHub Releases](https://github.com/guohuiyuan/go-music-dl/releases) 页面，像下载普通软件一样，找到适用于你的操作系统（Windows, macOS, Linux）的最新版本。
+
+下载解压后，你会看到一个名为 `music-dl` (或 `music-dl.exe`) 的文件，这就是我们的主角。
+
+### 2. 开始使用
+
+#### 方式一：启动 Web 模式（推荐新手）
+
+在终端（Windows 用户可以使用 PowerShell 或 CMD）中进入程序所在目录，然后运行：
 
 ```bash
-# 启动 Web 服务
 ./music-dl web
 ```
 
-然后打开浏览器，访问 `http://localhost:8080` 就可以看到搜索界面了。
+程序会自动为你打开默认浏览器，访问 `http://localhost:8080`。现在，音乐的世界就在你的指尖。
 
-![Web UI](./screenshots/web.png)
+#### 方式二：使用 CLI/TUI 模式（极客最爱）
 
-#### 方式二：在命令行里敲敲敲
+同样在终端中运行：
 
 ```bash
-# 简单搜索
+# 搜索 "周杰伦" 的歌曲
 ./music-dl -k "周杰伦"
 ```
 
-程序会进入一个交互界面，让你挑选要下载的歌曲。
+程序将带你进入一个交互式的 TUI 界面。使用键盘的 `↑` `↓` 键选择歌曲，按 `空格` 选中，最后敲击 `回车`，即可开始下载。
 
-![TUI](./screenshots/tui.png)
-
-是不是很简单？更详细的用法请继续往下看。
-
-## 🎶 支持的音乐平台
-
-本项目支持以下音乐源，每个源都有其特色和适用场景：
-
-- **网易云音乐 (netease)**: 国内主流音乐平台，曲库丰富，包含大量原创和独立音乐人作品
-- **QQ音乐 (qq)**: 腾讯旗下音乐平台，拥有大量正版音乐版权，特别是华语流行音乐
-- **酷狗音乐 (kugou)**: 老牌音乐平台，以海量曲库和K歌功能著称
-- **酷我音乐 (kuwo)**: 提供高品质音乐，支持多种音质选择，包括无损格式
-- **咪咕音乐 (migu)**: 中国移动旗下音乐平台，拥有大量正版音乐资源
-- **5sing原创音乐 (fivesing)**: 专注于原创音乐和翻唱作品的平台，适合寻找独立音乐人作品
-- **Jamendo (jamendo)**: 国际免费音乐平台，所有音乐均可免费下载和使用
-- **JOOX音乐 (joox)**: 腾讯国际版音乐平台，主要面向东南亚市场
-- **千千音乐 (qianqian)**: 百度旗下音乐平台，整合了百度音乐资源
-- **汽水音乐 (soda)**: 字节跳动旗下音乐平台，主打个性化推荐
-- **Bilibili音频 (bilibili)**: 从B站视频中提取音频内容，包含大量二次创作和同人音乐
-
-**注意**: 默认情况下排除 Bilibili 源，因为其内容多为视频音频，可能包含非音乐内容。如需使用可通过 `-s bilibili` 参数显式指定。
-
-## 📚 使用指南
-
-### Web 模式
-
-启动服务后，在浏览器中打开 `http://localhost:8080` 即可使用。
-- 在搜索框输入歌曲或歌手名。
-- 在下方的复选框中选择你想要搜索的音乐平台。
-- 点击“搜索”，结果会以表格形式呈现。
-- 你可以点击“试听”播放在线音乐和歌词。
-- 点击“下载”即可保存音乐文件。
-
-### CLI 模式
-
-#### 完整参数
+**一些高级玩法**:
 ```bash
-# 查看所有可用参数
-./music-dl --help
+# 精准搜索 "周杰伦" 的 "晴天"，并指定从 QQ 音乐和网易云寻找
+./music-dl -k "周杰伦 晴天" -s qq,netease
+
+# 下载时，顺便把封面和歌词也一并保存下来
+./music-dl -k "周杰伦" --cover --lyrics
 ```
 
-输出：
-```
-Search and download music from netease, qq, kugou, baidu and xiami.
+## 📚 我们支持哪些平台？
 
-Usage:
-  music-dl [OPTIONS] [flags]
-  music-dl [command]
+`Go Music DL` 的强大搜索能力由我们的核心库 `music-lib` 驱动。目前已支持：
 
-Examples:
-  music-dl -k "周杰伦"
-  music-dl web
+- 网易云音乐 (`netease`)
+- QQ 音乐 (`qq`)
+- 酷狗音乐 (`kugou`)
+- 酷我音乐 (`kuwo`)
+- 咪咕音乐 (`migu`)
+- 千千音乐 (`qianqian`)
+- 汽水音乐 (`soda`)
+- 5sing 原创音乐 (`fivesing`)
+- Jamendo
+- JOOX
+- Bilibili 音频
 
-Available Commands:
-  completion  Generate the autocompletion script for the specified shell
-  help        Help about any command
-  web         启动 Web 服务模式
+**小贴士**: 默认情况下，搜索会排除 `bilibili` 这类内容源，以保证音乐结果的纯粹性。你可以通过 `-s` 参数指定平台，例如 `-s all` 将火力全开，搜索所有支持的平台。
 
-Flags:
-      --cover             同时下载歌词
-      --filter string     按文件大小和歌曲时长过滤搜索结果
-  -h, --help              help for music-dl
-  -k, --keyword string    搜索关键字，歌名和歌手同时输入可以提高匹配
-      --lyrics            同时下载歌词
-      --nomerge           不对搜索结果列表排序和去重
-  -n, --number int        Number of search results (default 10)
-  -o, --outdir string     Output directory (default ".")
-      --play              开启下载后自动播放功能
-  -p, --playlist string   通过指定的歌单URL下载音乐
-  -x, --proxy string      Proxy (e.g. http://127.0.0.1:1087)
-  -s, --source strings    Supported music source (default [netease,qq,kugou,kuwo,migu])
-  -u, --url string        通过指定的歌曲URL下载音乐
-  -v, --verbose           Verbose mode
-      --version           Show the version and exit.
-```
+## ❓ 你可能会问 (FAQ)
 
-#### 灵活的选择方式
-在交互式下载中，你可以用多种方式指定下载序号：
-- **单个选择**: `1`
-- **多个选择**: `1 3 5` (用空格) 或 `1,3,5` (用逗号)
-- **范围选择**: `1-3` (选择第1到第3首)
-- **混合选择**: `1-3,5,7-9` (选择第1-3首、第5首、第7-9首)
+**Q: 为什么有些歌搜不到，或者下载失败了？**
+A: 这通常有几个原因：1) 这首歌需要 VIP 或付费才能听；2) 音乐平台的接口最近悄悄变了；3) 你的网络有点小情绪。我们会尽力过滤掉不能下载的歌曲，但无法保证 100% 的成功率。
 
-## ❓ 常见问题 (FAQ)
+**Q: Web 模式启动后，页面打不开或显示不正常？**
+A: 请先检查一下：1) 启动时用的端口（默认是 8080）是不是被其他程序占用了；2) 你的浏览器是不是装了某些“脾气古怪”的插件，它们可能会干扰页面脚本。
 
-### Q: 为什么有些歌搜不到或下载失败？
-A: 可能是因为：
-1.  歌曲需要 VIP 才能听。
-2.  该音乐平台的接口最近有变动。
-3.  你的网络不太稳定。
-本工具会自动过滤掉大部分 VIP 歌曲，但无法保证 100% 成功。
+**Q: 我该如何下载歌曲的封面和歌词？**
+A: 在 CLI/TUI 模式下，记得带上 `--cover` 和 `--lyrics` 参数。在 Web 模式下，我们已经默认为你开启了这些功能。下载成功后，你会在相同目录下找到 `.jpg` 格式的封面和 `.lrc` 格式的歌词文件。
 
-### Q: 为什么默认不搜索 Bilibili？
-A: B 站主要是视频，音频内容比较杂，为了保证搜索结果的纯粹性，默认排除了该源。如果你确实需要，可以在搜索时手动加上：`-s bilibili`。
+## 👨‍💻 致开发者
 
-### Q: Web 模式启动失败怎么办？
-A: 请检查：
-1.  启动时指定的端口（默认为 8080）是否被其他程序占用了。
-2.  项目依赖是否已完整安装。
+### 项目结构一览
 
-### Q: 如何下载歌曲的封面和歌词？
-A: 本工具会自动尝试下载封面和歌词。下载成功后，封面会保存为 `歌手 - 歌名.jpg`，歌词会内嵌到音乐文件中或保存为 `.lrc` 文件。
-
-### Q: 汽水音乐（Soda）的音频为什么要解密？
-A: 因为汽水音乐对音频文件做了加密处理。本工具内置了解密程序，在下载后会自动完成解密，整个过程你无需关心，下载完成即可正常播放。
-
-## 👨‍💻 给开发者
-
-### 项目结构
 ```
 go-music-dl/
 ├── cmd/
-│   └── music-dl/
-│       ├── main.go           # 程序入口
-│       ├── root.go           # CLI 主命令逻辑
-│       └── web.go            # Web 子命令逻辑
-├── core/                     # 核心逻辑层
-│   └── service.go           # 源映射管理和并发搜索
+│   └── music-dl/       # Cobra CLI 命令定义
+│       ├── main.go       # 程序入口
+│       ├── root.go       # CLI 主命令
+│       └── web.go        # Web 子命令
+├── core/                 # 核心业务逻辑
+│   └── service.go       # 并发搜索、源管理等
 ├── internal/
-│   ├── cli/                  # CLI 交互逻辑 (Bubble Tea)
-│   └── web/                  # Web 服务逻辑 (Gin)
-├── pkg/
-│   └── models/               # 扩展数据模型
+│   ├── cli/              # TUI 界面 (基于 Bubble Tea)
+│   └── web/              # Web 服务 (基于 Gin)
+│       ├── server.go
+│       └── templates/
 ├── go.mod
-├── go.sum
 └── README.md
 ```
 
-### 贡献指南
+### 核心技术栈
 
-欢迎为本项目贡献代码！
-1.  Fork 本项目
-2.  创建你的功能分支 (`git checkout -b feature/AmazingFeature`)
-3.  提交你的更改 (`git commit -m 'Add some AmazingFeature'`)
-4.  将分支推送到你的 Fork 仓库 (`git push origin feature/AmazingFeature`)
-5.  提交一个 Pull Request
+- **核心库**: [music-lib](https://github.com/guohuiyuan/music-lib) - 我们项目的“心脏”，提供所有音乐平台的搜索和下载能力。
+- **CLI 框架**: [Cobra](https://github.com/spf13/cobra) - 构建强大命令行工具的基石。
+- **Web 框架**: [Gin](https://github.com/gin-gonic/gin) - 一个以性能著称的 Go Web 框架。
+- **TUI 框架**: [Bubble Tea](https://github.com/charmbracelet/bubbletea) - 帮助我们构建优雅复古的终端界面。
 
-### 致谢
+### 欢迎你的加入
 
-本项目离不开以下优秀开源项目的支持：
-- [music-lib](https://github.com/guohuiyuan/music-lib): 核心音乐搜索库
-- [Cobra](https://github.com/spf13/cobra): CLI 框架
-- [Gin](https://github.com/gin-gonic/gin): Web 框架
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea): TUI 框架
-- [Tailwind CSS](https://tailwindcss.com/): CSS 框架
-- 以及 [musicdl](https://github.com/CharlesPikachu/musicdl) 和 [music-dl](https://github.com/0xHJK/music-dl) 带来的灵感。
+我们张开双臂欢迎你为这个项目贡献代码！如果你有任何绝妙的想法或改进建议，请不要犹豫，随时通过 Issue 或 Pull Request 与我们分享。
 
-## todolist
-- [ ] 添加比特率
-- [ ] music-dl web之后，直接打开网页，不要手动点开。
-- [ ] 添加扫码添加cookie
-
-## 📜 许可证
+## 许可证
 
 本项目基于 [GNU Affero General Public License v3.0](https://github.com/guohuiyuan/go-music-dl/blob/main/LICENSE) 许可。
 
-## ⚠️ 免责声明
+## ⚠️ 温馨提示
 
-本项目仅供个人学习和技术研究使用，请在遵守相关法律法规和音乐平台用户协议的前提下使用。通过本工具下载的任何资源，请在 24 小时内删除。请支持正版音乐！
+本项目仅供个人学习和技术交流使用。请在遵守相关法律法规和音乐平台用户协议的前提下，合理使用本工具。通过本工具下载的任何音乐资源，请于 24 小时内删除。享受音乐，更要支持正版。
