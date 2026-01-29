@@ -166,7 +166,8 @@ func Start(port string) {
 	})
 
 	r.GET("/", func(c *gin.Context) {
-		renderIndex(c, nil, "")
+		// 修改点1: 传入 nil
+		renderIndex(c, nil, "", nil)
 	})
 
 	// Search
@@ -195,11 +196,12 @@ func Start(port string) {
 			}(src, fn)
 		}
 		wg.Wait()
-		renderIndex(c, allSongs, keyword)
+		// 修改点2: 传入 sources
+		renderIndex(c, allSongs, keyword, sources)
 	})
 
 	// Inspect (UI Display Only)
-r.GET("/inspect", func(c *gin.Context) {
+	r.GET("/inspect", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
 		durStr := c.Query("duration") // 用于计算比特率
@@ -429,13 +431,18 @@ r.GET("/inspect", func(c *gin.Context) {
 	r.Run(":" + port)
 }
 
-
-func renderIndex(c *gin.Context, songs []model.Song, q string) {
+// 修改点3: 函数签名增加了 selected 参数
+func renderIndex(c *gin.Context, songs []model.Song, q string, selected []string) {
 	allSrc := core.GetAllSourceNames()
 	desc := make(map[string]string)
 	for _, s := range allSrc { desc[s] = core.GetSourceDescription(s) }
 	c.HTML(200, "index.html", gin.H{
-		"Result": songs, "Keyword": q, "AllSources": allSrc, "DefaultSources": core.GetDefaultSourceNames(), "SourceDescriptions": desc,
+		"Result":             songs,
+		"Keyword":            q,
+		"AllSources":         allSrc,
+		"DefaultSources":     core.GetDefaultSourceNames(),
+		"SourceDescriptions": desc,
+		"Selected":           selected, // 传递选中的源
 	})
 }
 
