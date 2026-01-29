@@ -17,7 +17,7 @@ var (
 	sources     []string
 	outDir      string
 	withCover   bool
-	withLyrics  bool 
+	withLyrics  bool
 )
 
 var rootCmd = &cobra.Command{
@@ -66,7 +66,7 @@ var rootCmd = &cobra.Command{
 		if outDir == "" {
 			outDir = "downloads"
 		}
-		
+
 		// 确保目录存在
 		if _, err := os.Stat(outDir); os.IsNotExist(err) {
 			_ = os.MkdirAll(outDir, 0755)
@@ -88,11 +88,11 @@ func init() {
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "显示版本信息")
 	rootCmd.Flags().StringVarP(&keyword, "keyword", "k", "", "搜索关键字")
 	rootCmd.Flags().StringVarP(&urlStr, "url", "u", "", "通过指定的歌曲URL下载音乐 (开发中)")
-	
+
 	// [优化] 明确提示可用源
 	rootCmd.Flags().StringSliceVarP(&sources, "sources", "s", []string{}, "指定搜索源，用逗号分隔 (e.g. netease,qq,kugou)")
-	
+
 	rootCmd.Flags().StringVarP(&outDir, "outdir", "o", "downloads", "指定下载目录")
-	rootCmd.Flags().BoolVar(&withCover, "cover", false, "同时下载封面图片")
-	
+	rootCmd.Flags().BoolVar(&withCover, "cover", true, "同时下载封面图片 (默认开启，使用 --cover=false 关闭)")
+	rootCmd.Flags().BoolVarP(&withLyrics, "lyrics", "l", true, "同时下载歌词 (默认开启，使用 --lyrics=false 关闭)")
 }

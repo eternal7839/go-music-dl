@@ -1,7 +1,12 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -13,6 +18,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/guohuiyuan/go-music-dl/core"
+	"github.com/guohuiyuan/music-lib/bilibili"
 	"github.com/guohuiyuan/music-lib/fivesing"
 	"github.com/guohuiyuan/music-lib/jamendo"
 	"github.com/guohuiyuan/music-lib/joox"
@@ -24,9 +30,15 @@ import (
 	"github.com/guohuiyuan/music-lib/qianqian"
 	"github.com/guohuiyuan/music-lib/qq"
 	"github.com/guohuiyuan/music-lib/soda"
+	"github.com/guohuiyuan/music-lib/utils"
 )
 
-// ... (样式定义保持不变) ...
+// --- 常量与样式 ---
+const (
+	CookieFile = "cookies.json"
+	UA_Common  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+)
+
 var (
 	primaryColor   = lipgloss.Color("#874BFD")
 	secondaryColor = lipgloss.Color("#7D56F4")
@@ -54,6 +66,85 @@ var (
 	checkedStyle = lipgloss.NewStyle().Foreground(greenColor).Bold(true)
 )
 
+// --- Cookie 管理 (从 Server 移植) ---
+type CookieManager struct {
+	mu      sync.RWMutex
+	cookies map[string]string
+}
+
+var cm = &CookieManager{cookies: make(map[string]string)}
+
+func (m *CookieManager) Load() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	data, err := os.ReadFile(CookieFile)
+	if err == nil {
+		json.Unmarshal(data, &m.cookies)
+	}
+}
+
+func (m *CookieManager) Get(source string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.cookies[source]
+}
+
+// --- 工厂函数 (用于生成带 Cookie 的实例) ---
+
+func getSearchFunc(source string) func(string) ([]model.Song, error) {
+	c := cm.Get(source)
+	switch source {
+	case "netease": return netease.New(c).Search
+	case "qq": return qq.New(c).Search
+	case "kugou": return kugou.New(c).Search
+	case "kuwo": return kuwo.New(c).Search
+	case "migu": return migu.New(c).Search
+	case "soda": return soda.New(c).Search
+	case "bilibili": return bilibili.New(c).Search
+	case "fivesing": return fivesing.New(c).Search
+	case "jamendo": return jamendo.New(c).Search
+	case "joox": return joox.New(c).Search
+	case "qianqian": return qianqian.New(c).Search
+	default: return nil
+	}
+}
+
+func getDownloadFunc(source string) func(*model.Song) (string, error) {
+	c := cm.Get(source)
+	switch source {
+	case "netease": return netease.New(c).GetDownloadURL
+	case "qq": return qq.New(c).GetDownloadURL
+	case "kugou": return kugou.New(c).GetDownloadURL
+	case "kuwo": return kuwo.New(c).GetDownloadURL
+	case "migu": return migu.New(c).GetDownloadURL
+	case "soda": return soda.New(c).GetDownloadURL
+	case "bilibili": return bilibili.New(c).GetDownloadURL
+	case "fivesing": return fivesing.New(c).GetDownloadURL
+	case "jamendo": return jamendo.New(c).GetDownloadURL
+	case "joox": return joox.New(c).GetDownloadURL
+	case "qianqian": return qianqian.New(c).GetDownloadURL
+	default: return nil
+	}
+}
+
+func getLyricFunc(source string) func(*model.Song) (string, error) {
+	c := cm.Get(source)
+	switch source {
+	case "netease": return netease.New(c).GetLyrics
+	case "qq": return qq.New(c).GetLyrics
+	case "kugou": return kugou.New(c).GetLyrics
+	case "kuwo": return kuwo.New(c).GetLyrics
+	case "migu": return migu.New(c).GetLyrics
+	case "soda": return soda.New(c).GetLyrics
+	case "bilibili": return bilibili.New(c).GetLyrics
+	case "fivesing": return fivesing.New(c).GetLyrics
+	case "jamendo": return jamendo.New(c).GetLyrics
+	case "joox": return joox.New(c).GetLyrics
+	case "qianqian": return qianqian.New(c).GetLyrics
+	default: return nil
+	}
+}
+
 // --- 程序状态 ---
 type sessionState int
 
@@ -79,7 +170,7 @@ type modelState struct {
 	sources    []string // 指定搜索源
 	outDir     string
 	withCover  bool
-	withLyrics bool // [新增]
+	withLyrics bool
 
 	// 下载队列管理
 	downloadQueue []model.Song // 待下载队列
@@ -89,13 +180,14 @@ type modelState struct {
 	err       error
 	statusMsg string // 底部状态栏消息
 
-	// 用于防止搜索闪烁
 	windowWidth int
 }
 
 // 启动 UI 的入口
-// [修改] 增加 withLyrics 参数
 func StartUI(initialKeyword string, sources []string, outDir string, withCover bool, withLyrics bool) {
+	// 1. 加载 Cookies
+	cm.Load()
+
 	ti := textinput.New()
 	ti.Placeholder = "输入歌名或歌手..."
 	ti.Focus()
@@ -106,11 +198,9 @@ func StartUI(initialKeyword string, sources []string, outDir string, withCover b
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(primaryColor)
 
-	// 初始化进度条
 	prog := progress.New(progress.WithDefaultGradient())
 
 	initialState := stateInput
-	// 如果命令行参数已经带了 keyword，直接进入加载状态
 	if initialKeyword != "" {
 		ti.SetValue(initialKeyword)
 		initialState = stateLoading
@@ -125,7 +215,7 @@ func StartUI(initialKeyword string, sources []string, outDir string, withCover b
 		sources:    sources,
 		outDir:     outDir,
 		withCover:  withCover,
-		withLyrics: withLyrics, // [新增]
+		withLyrics: withLyrics,
 	}
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
@@ -158,7 +248,6 @@ func (m modelState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// 根据状态分发逻辑
 	switch m.state {
 	case stateInput:
 		return m.updateInput(msg)
@@ -183,6 +272,8 @@ func (m modelState) updateInput(msg tea.Msg) (tea.Model, tea.Cmd) {
 			val := m.textInput.Value()
 			if strings.TrimSpace(val) != "" {
 				m.state = stateLoading
+				// 重新加载 Cookie 以防外部文件变动
+				cm.Load()
 				return m, tea.Batch(m.spinner.Tick, searchCmd(val, m.sources))
 			}
 		case tea.KeyEsc:
@@ -207,19 +298,19 @@ func (m modelState) updateLoading(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.songs = msg
 		m.state = stateList
 		m.cursor = 0
-		m.selected = make(map[int]struct{}) // 重置选择
+		m.selected = make(map[int]struct{})
 		m.statusMsg = fmt.Sprintf("找到 %d 首歌曲。空格选择，回车下载。", len(m.songs))
 		return m, nil
 	case searchErrorMsg:
 		m.err = msg
-		m.state = stateInput // 回到输入模式
+		m.state = stateInput
 		m.statusMsg = fmt.Sprintf("搜索失败: %v", msg)
 		return m, textinput.Blink
 	}
 	return m, nil
 }
 
-// --- 3. 列表状态逻辑 (核心多选) ---
+// --- 3. 列表状态逻辑 ---
 func (m modelState) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -232,29 +323,30 @@ func (m modelState) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.songs)-1 {
 				m.cursor++
 			}
-		case " ": // 空格键：切换选中状态
+		case " ":
 			if _, ok := m.selected[m.cursor]; ok {
 				delete(m.selected, m.cursor)
 			} else {
 				m.selected[m.cursor] = struct{}{}
 			}
-		case "a": // 全选
+		case "a":
 			for i := range m.songs {
 				m.selected[i] = struct{}{}
 			}
-		case "n": // 取消全选
+		case "n":
 			m.selected = make(map[int]struct{})
-		case "esc", "b": // 返回搜索
+		case "q":
+			return m, tea.Quit
+		case "esc", "b":
 			m.state = stateInput
 			m.textInput.SetValue("")
 			m.textInput.Focus()
 			return m, textinput.Blink
-		case "enter": // 确认下载
+		case "enter":
 			if len(m.selected) == 0 {
 				m.selected[m.cursor] = struct{}{}
 			}
 
-			// --- 初始化下载队列 ---
 			m.downloadQueue = []model.Song{}
 			for idx := range m.selected {
 				if idx >= 0 && idx < len(m.songs) {
@@ -267,7 +359,6 @@ func (m modelState) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = stateDownloading
 			m.statusMsg = "正在准备下载..."
 
-			// 触发下载第一首，[修改] 传递 outDir 和 withLyrics
 			return m, tea.Batch(
 				m.spinner.Tick,
 				downloadNextCmd(m.downloadQueue, m.outDir, m.withCover, m.withLyrics),
@@ -277,7 +368,7 @@ func (m modelState) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// --- 4. 下载状态逻辑 (带进度条) ---
+// --- 4. 下载状态逻辑 ---
 type downloadOneFinishedMsg struct {
 	err  error
 	song model.Song
@@ -298,7 +389,6 @@ func (m modelState) updateDownloading(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case downloadOneFinishedMsg:
 		m.downloaded++
 
-		// 构造当前下载结果消息
 		resultStr := fmt.Sprintf("已完成: %s - %s", msg.song.Artist, msg.song.Name)
 		if msg.err != nil {
 			resultStr = fmt.Sprintf("❌ 失败: %s - %s (%v)", msg.song.Artist, msg.song.Name, msg.err)
@@ -306,14 +396,11 @@ func (m modelState) updateDownloading(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMsg = resultStr
 
 		pct := float64(m.downloaded) / float64(m.totalToDl)
-
 		if len(m.downloadQueue) > 0 {
 			m.downloadQueue = m.downloadQueue[1:]
 		}
 
-		cmds := []tea.Cmd{
-			m.progress.SetPercent(pct),
-		}
+		cmds := []tea.Cmd{m.progress.SetPercent(pct)}
 
 		if m.downloaded >= m.totalToDl {
 			m.state = stateList
@@ -322,16 +409,11 @@ func (m modelState) updateDownloading(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// [修改] 继续下载下一首
 		cmds = append(cmds, downloadNextCmd(m.downloadQueue, m.outDir, m.withCover, m.withLyrics))
 		return m, tea.Batch(cmds...)
 	}
 	return m, nil
 }
-
-// --- View 和 renderTable 保持不变 (参考上一次回答) ---
-// ... (View 和 renderTable 代码与上次回答一致，此处省略以节省篇幅) ...
-// 请保留上次提供的 renderTable (colCheck = 6) 的实现。
 
 // --- 辅助命令 ---
 
@@ -348,44 +430,28 @@ func searchCmd(keyword string, sources []string) tea.Cmd {
 		var mu sync.Mutex
 
 		for _, src := range targetSources {
+			// 使用 getSearchFunc 工厂获取带 Cookie 的实例
+			fn := getSearchFunc(src)
+			if fn == nil {
+				continue
+			}
+
 			wg.Add(1)
-			go func(s string) {
+			go func(s string, f func(string) ([]model.Song, error)) {
 				defer wg.Done()
-				var res []model.Song
-				var err error
-
-				switch s {
-				case "kugou":
-					res, err = kugou.Search(keyword)
-				case "netease":
-					res, err = netease.Search(keyword)
-				case "qq":
-					res, err = qq.Search(keyword)
-				case "kuwo":
-					res, err = kuwo.Search(keyword)
-				case "migu":
-					res, err = migu.Search(keyword)
-				case "fivesing":
-					res, err = fivesing.Search(keyword)
-				case "jamendo":
-					res, err = jamendo.Search(keyword)
-				case "joox":
-					res, err = joox.Search(keyword)
-				case "qianqian":
-					res, err = qianqian.Search(keyword)
-				case "soda":
-					res, err = soda.Search(keyword)
-				}
-
+				res, err := f(keyword)
 				if err == nil && len(res) > 0 {
-					if len(res) > 5 {
-						res = res[:5]
+					for i := range res { res[i].Source = s } // 确保 Source 字段正确
+					
+					// 限制单源结果数量，避免刷屏
+					if len(res) > 10 {
+						res = res[:10]
 					}
 					mu.Lock()
 					allSongs = append(allSongs, res...)
 					mu.Unlock()
 				}
-			}(src)
+			}(src, fn)
 		}
 		wg.Wait()
 
@@ -396,26 +462,104 @@ func searchCmd(keyword string, sources []string) tea.Cmd {
 	}
 }
 
-// 单曲下载命令
-// [修改] 增加 outDir 和 withLyrics 参数
+// 单曲下载命令 (完全重构，支持 Cookie)
 func downloadNextCmd(queue []model.Song, outDir string, withCover bool, withLyrics bool) tea.Cmd {
 	return func() tea.Msg {
 		if len(queue) == 0 {
 			return nil
 		}
 		target := queue[0]
-
-		// 调用更新后的核心下载函数
-		err := core.DownloadSongWithOptions(&target, outDir, withCover, withLyrics)
-
-		return downloadOneFinishedMsg{
-			err:  err,
-			song: target,
-		}
+		err := downloadSongWithCookie(&target, outDir, withCover, withLyrics)
+		return downloadOneFinishedMsg{err: err, song: target}
 	}
 }
 
-// ... truncate 和 getSourceDisplay 辅助函数 ...
+// 内部下载实现，替代 core.DownloadSongWithOptions
+func downloadSongWithCookie(song *model.Song, outDir string, withCover bool, withLyrics bool) error {
+	// 1. 准备目录
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return err
+	}
+	
+	fileName := fmt.Sprintf("%s - %s", utils.SanitizeFilename(song.Artist), utils.SanitizeFilename(song.Name))
+	filePath := filepath.Join(outDir, fileName+".mp3")
+
+	// 2. 获取下载数据
+	var finalData []byte
+
+	// Soda 特殊处理 (加密)
+	if song.Source == "soda" {
+		cookie := cm.Get("soda")
+		sodaInst := soda.New(cookie)
+		info, err := sodaInst.GetDownloadInfo(song)
+		if err != nil { return err }
+		
+		req, _ := http.NewRequest("GET", info.URL, nil)
+		req.Header.Set("User-Agent", UA_Common)
+		resp, err := (&http.Client{}).Do(req)
+		if err != nil { return err }
+		defer resp.Body.Close()
+		
+		encryptedData, _ := io.ReadAll(resp.Body)
+		finalData, err = soda.DecryptAudio(encryptedData, info.PlayAuth)
+		if err != nil { return err }
+	} else {
+		// 常规源处理
+		dlFunc := getDownloadFunc(song.Source)
+		if dlFunc == nil {
+			return fmt.Errorf("不支持的源: %s", song.Source)
+		}
+		
+		urlStr, err := dlFunc(song)
+		if err != nil { return err }
+		if urlStr == "" { return fmt.Errorf("下载链接为空") }
+
+		// 下载二进制流
+		req, _ := http.NewRequest("GET", urlStr, nil)
+		req.Header.Set("User-Agent", UA_Common)
+		if song.Source == "bilibili" { req.Header.Set("Referer", "https://www.bilibili.com/") }
+		if song.Source == "qq" { req.Header.Set("Referer", "http://y.qq.com") }
+		if song.Source == "migu" { req.Header.Set("Referer", "http://music.migu.cn/") }
+
+		resp, err := (&http.Client{}).Do(req)
+		if err != nil { return err }
+		defer resp.Body.Close()
+		
+		finalData, err = io.ReadAll(resp.Body)
+		if err != nil { return err }
+	}
+
+	// 3. 写入文件
+	if err := os.WriteFile(filePath, finalData, 0644); err != nil {
+		return err
+	}
+
+	// 4. 下载封面 (可选)
+	if withCover && song.Cover != "" {
+		go func() {
+			coverPath := filepath.Join(outDir, fileName+".jpg")
+			if data, err := utils.Get(song.Cover); err == nil {
+				_ = os.WriteFile(coverPath, data, 0644)
+			}
+		}()
+	}
+
+	// 5. 下载歌词 (可选)
+	if withLyrics {
+		go func() {
+			if lrcFunc := getLyricFunc(song.Source); lrcFunc != nil {
+				if lrc, err := lrcFunc(song); err == nil && lrc != "" {
+					lrcPath := filepath.Join(outDir, fileName+".lrc")
+					_ = os.WriteFile(lrcPath, []byte(lrc), 0644)
+				}
+			}
+		}()
+	}
+
+	return nil
+}
+
+// ... truncate, getSourceDisplay, View, renderTable 保持不变 ...
 func truncate(s string, maxLen int) string {
 	if utf8.RuneCountInString(s) <= maxLen {
 		return s
@@ -434,7 +578,6 @@ func getSourceDisplay(s []string) string {
 	return strings.Join(s, ", ")
 }
 
-// --- View 部分 (为了完整性，这里补充 View 的代码，确保编译通过) ---
 func (m modelState) View() string {
 	var s strings.Builder
 	s.WriteString(lipgloss.NewStyle().Foreground(primaryColor).Bold(true).Render("\n🎵 Go Music DL TUI") + "\n\n")
@@ -445,6 +588,15 @@ func (m modelState) View() string {
 		s.WriteString(m.textInput.View())
 		s.WriteString(fmt.Sprintf("\n\n(当前源: %v)", getSourceDisplay(m.sources)))
 		s.WriteString("\n(按 Enter 搜索, Ctrl+C 退出)")
+		// 提示 Cookie 状态
+		cookieCount := 0
+		cm.mu.RLock()
+		cookieCount = len(cm.cookies)
+		cm.mu.RUnlock()
+		if cookieCount > 0 {
+			s.WriteString(lipgloss.NewStyle().Foreground(greenColor).Render(fmt.Sprintf("\n(已加载 %d 个源的 Cookie)", cookieCount)))
+		}
+
 		if m.err != nil {
 			s.WriteString(lipgloss.NewStyle().Foreground(redColor).Render(fmt.Sprintf("\n\n❌ %v", m.err)))
 		}
