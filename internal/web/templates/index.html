@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="referrer" content="no-referrer">
-    <title>Music Hub - 聚合搜索</title>
+    <title>Music Hub - 聚合搜索与解析</title>
     <link rel="icon" href="/icon.png" type="image/png">
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/aplayer/dist/APlayer.min.css">
@@ -20,6 +20,7 @@
             --text-sub: #718096;
             --shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
             --shadow-active: 0 10px 15px -3px rgba(102, 126, 234, 0.2);
+            --error-color: #e53e3e;
         }
 
         body {
@@ -70,6 +71,7 @@
             border: 2px solid #e2e8f0; border-radius: 50px;
             font-size: 16px; outline: none; transition: all 0.3s;
             background: #f8fafc;
+            min-width: 0; /* WebKit flexbox fix */
         }
         input[type="text"]:focus {
             border-color: var(--primary-color); background: #fff;
@@ -81,8 +83,17 @@
             background: var(--primary-gradient); color: white;
             font-size: 16px; font-weight: 600; cursor: pointer;
             transition: all 0.2s; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            flex-shrink: 0;
         }
         .search-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4); }
+
+        /* Error Message */
+        .error-msg {
+            background: #fff5f5; color: var(--error-color);
+            padding: 12px; border-radius: 8px; margin-bottom: 20px;
+            border: 1px solid #fed7d7; text-align: center; font-size: 14px;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
 
         /* Source Selector */
         .source-header {
@@ -212,130 +223,40 @@
         #waifu canvas, #waifu-tool, #waifu-tips { pointer-events: auto !important; }
 
         /* =========================================
-           MOBILE ADAPTATION (UPDATED)
+           MOBILE ADAPTATION
            ========================================= */
         @media (max-width: 768px) {
-            /* Hide Waifu Widget on Mobile */
             #waifu { display: none; }
+            body { padding: 0 0 100px 0; background-size: 100% 400px; }
+            .container { padding: 0; width: 100%; }
 
-            /* Body: Reduce padding to use full screen, leave space for APlayer */
-            body {
-                padding: 0 0 100px 0; 
-                background-size: 100% 400px;
-            }
-
-            .container { 
-                padding: 0; 
-                width: 100%; 
-            }
-
-            /* Search Box: Compact style attached to top */
+            /* Search Box Compact */
             .search-box { 
                 padding: 20px 15px; 
                 border-radius: 0 0 20px 20px; 
                 margin-bottom: 20px;
-                border-left: none;
-                border-right: none;
-                border-top: none;
+                border-left: none; border-right: none; border-top: none;
             }
+            h1 { font-size: 1.8rem; margin-bottom: 20px; }
+            .input-group { margin-bottom: 15px; }
 
-            h1 {
-                font-size: 1.8rem;
-                margin-bottom: 20px;
-            }
-
-            .input-group {
-                margin-bottom: 15px;
-            }
-
-            /* Source Grid: Auto-fill to prevent text overflow */
-            .source-grid { 
-                grid-template-columns: repeat(auto-fill, minmax(85px, 1fr)); 
-                gap: 8px; 
-            }
-            
-            .source-card { 
-                padding: 8px 4px; 
-                min-height: 40px;
-                justify-content: center;
-            }
-            
+            /* Grid & Card */
+            .source-grid { grid-template-columns: repeat(auto-fill, minmax(85px, 1fr)); gap: 8px; }
+            .source-card { padding: 8px 4px; min-height: 40px; justify-content: center; }
             .source-name { font-size: 12px; }
-            
-            .source-desc { 
-                font-size: 9px; 
-                transform: scale(0.9); 
-                white-space: nowrap;
-                margin-top: 2px;
-                display: none; /* Optional: Hide description on very small screens if needed */
-            }
+            .source-desc { display: none; }
 
-            /* Results: Add side padding */
-            .result-list {
-                padding: 0 12px;
-                gap: 12px;
-            }
-
-            /* Song Card: Compact layout */
-            .song-card { 
-                margin: 0; 
-                padding: 12px; 
-                border-radius: 12px; 
-            }
-
-            /* Cover: Smaller */
-            .cover-wrapper {
-                width: 54px; 
-                height: 54px; 
-                margin-right: 12px;
-                border-radius: 8px;
-            }
-
-            /* Song Info: Truncate text */
-            .song-info h3 {
-                font-size: 15px;
-                margin-bottom: 4px;
-                max-width: 100%;
-            }
-
-            .artist-line {
-                font-size: 12px;
-                margin-bottom: 6px;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                max-width: 180px; 
-            }
-
+            .result-list { padding: 0 12px; gap: 12px; }
+            .song-card { margin: 0; padding: 12px; border-radius: 12px; }
+            .cover-wrapper { width: 54px; height: 54px; margin-right: 12px; border-radius: 8px; }
+            .song-info h3 { font-size: 15px; margin-bottom: 4px; max-width: 100%; }
+            .artist-line { font-size: 12px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
             .tags { flex-wrap: wrap; }
             .tag { padding: 2px 5px; }
-
-            /* Actions: Prevent squishing */
-            .actions { 
-                gap: 8px; 
-                flex-shrink: 0; 
-            }
-            
-            .btn-circle {
-                width: 34px;
-                height: 34px;
-                font-size: 13px;
-            }
-
-            /* Settings Button: Adjust position */
-            .settings-float { 
-                top: 15px; 
-                right: 15px; 
-                width: 36px;
-                height: 36px;
-            }
-            
-            /* Modal: fit mobile screen */
-            .modal {
-                width: 85%;
-                max-height: 80vh;
-                padding: 20px;
-            }
+            .actions { gap: 8px; flex-shrink: 0; }
+            .btn-circle { width: 34px; height: 34px; font-size: 13px; }
+            .settings-float { top: 15px; right: 15px; width: 36px; height: 36px; }
+            .modal { width: 85%; max-height: 80vh; padding: 20px; }
         }
     </style>
 </head>
@@ -350,9 +271,15 @@
         <h1>🎵 Music Hub</h1>
         <form action="/search" method="get">
             <div class="input-group">
-                <input type="text" name="q" value="{{.Keyword}}" placeholder="搜索歌曲、歌手、专辑..." required autocomplete="off">
+                <input type="text" name="q" value="{{.Keyword}}" placeholder="搜索歌曲、歌手... 或直接粘贴分享链接" required autocomplete="off">
                 <button type="submit" class="search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
             </div>
+
+            {{ if .Error }}
+            <div class="error-msg">
+                <i class="fa-solid fa-circle-exclamation"></i> {{ .Error }}
+            </div>
+            {{ end }}
 
             <div class="source-selector">
                 <div class="source-header">
@@ -441,10 +368,12 @@
             {{ end }}
         </ul>
     {{ else if .Keyword }}
+        {{ if not .Error }}
         <div class="no-results">
             <i class="fa-solid fa-music" style="font-size: 40px; margin-bottom: 10px; display:block;"></i>
             <p>未找到符合条件的资源</p>
         </div>
+        {{ end }}
     {{ end }}
 </div>
 

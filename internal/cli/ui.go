@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -66,7 +67,7 @@ var (
 	checkedStyle = lipgloss.NewStyle().Foreground(greenColor).Bold(true)
 )
 
-// --- Cookie 管理 (从 Server 移植) ---
+// --- Cookie 管理 ---
 type CookieManager struct {
 	mu      sync.RWMutex
 	cookies map[string]string
@@ -89,7 +90,7 @@ func (m *CookieManager) Get(source string) string {
 	return m.cookies[source]
 }
 
-// --- 工厂函数 (用于生成带 Cookie 的实例) ---
+// --- 工厂函数 ---
 
 func getSearchFunc(source string) func(string) ([]model.Song, error) {
 	c := cm.Get(source)
@@ -181,6 +182,65 @@ func getLyricFunc(source string) func(*model.Song) (string, error) {
 	}
 }
 
+// 新增：Parse 工厂函数
+func getParseFunc(source string) func(string) (*model.Song, error) {
+	c := cm.Get(source)
+	switch source {
+	case "netease":
+		return netease.New(c).Parse
+	case "qq":
+		return qq.New(c).Parse
+	case "kugou":
+		return kugou.New(c).Parse
+	case "kuwo":
+		return kuwo.New(c).Parse
+	case "migu":
+		return migu.New(c).Parse
+	case "soda":
+		return soda.New(c).Parse
+	case "bilibili":
+		return bilibili.New(c).Parse
+	case "fivesing":
+		return fivesing.New(c).Parse
+	case "jamendo":
+		return jamendo.New(c).Parse
+	default:
+		return nil
+	}
+}
+
+// 新增：自动检测链接来源
+func detectSource(link string) string {
+	if strings.Contains(link, "163.com") {
+		return "netease"
+	}
+	if strings.Contains(link, "qq.com") {
+		return "qq"
+	}
+	if strings.Contains(link, "kugou.com") {
+		return "kugou"
+	}
+	if strings.Contains(link, "kuwo.cn") {
+		return "kuwo"
+	}
+	if strings.Contains(link, "migu.cn") {
+		return "migu"
+	}
+	if strings.Contains(link, "bilibili.com") || strings.Contains(link, "b23.tv") {
+		return "bilibili"
+	}
+	if strings.Contains(link, "douyin.com") || strings.Contains(link, "qishui") {
+		return "soda"
+	}
+	if strings.Contains(link, "5sing") {
+		return "fivesing"
+	}
+	if strings.Contains(link, "jamendo.com") {
+		return "jamendo"
+	}
+	return ""
+}
+
 // --- 程序状态 ---
 type sessionState int
 
@@ -225,10 +285,10 @@ func StartUI(initialKeyword string, sources []string, outDir string, withCover b
 	cm.Load()
 
 	ti := textinput.New()
-	ti.Placeholder = "输入歌名或歌手..."
+	ti.Placeholder = "输入歌名、歌手或粘贴分享链接..."
 	ti.Focus()
-	ti.CharLimit = 156
-	ti.Width = 40
+	ti.CharLimit = 256
+	ti.Width = 50
 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
@@ -335,12 +395,19 @@ func (m modelState) updateLoading(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.state = stateList
 		m.cursor = 0
 		m.selected = make(map[int]struct{})
-		m.statusMsg = fmt.Sprintf("找到 %d 首歌曲。空格选择，回车下载。", len(m.songs))
+		
+		// 如果是单曲解析（通常通过 URL），自动选中
+		if len(m.songs) == 1 && strings.HasPrefix(m.textInput.Value(), "http") {
+			m.selected[0] = struct{}{}
+			m.statusMsg = fmt.Sprintf("解析成功: %s。按回车下载。", m.songs[0].Name)
+		} else {
+			m.statusMsg = fmt.Sprintf("找到 %d 首歌曲。空格选择，回车下载。", len(m.songs))
+		}
 		return m, nil
 	case searchErrorMsg:
 		m.err = msg
 		m.state = stateInput
-		m.statusMsg = fmt.Sprintf("搜索失败: %v", msg)
+		m.statusMsg = fmt.Sprintf("操作失败: %v", msg)
 		return m, textinput.Blink
 	}
 	return m, nil
@@ -366,12 +433,10 @@ func (m modelState) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selected[m.cursor] = struct{}{}
 			}
 		case "a":
-			// 如果当前已经是全选状态，则清空（实现“按两下全不选”）
 			if len(m.selected) == len(m.songs) && len(m.songs) > 0 {
 				m.selected = make(map[int]struct{})
 				m.statusMsg = "已取消全部选择"
 			} else {
-				// 否则全选
 				for i := range m.songs {
 					m.selected[i] = struct{}{}
 				}
@@ -459,9 +524,85 @@ func (m modelState) updateDownloading(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // --- 辅助命令 ---
 
-// 异步搜索命令
+// 核心改进：探测歌曲详情（填充大小和码率）
+func probeSongDetails(song *model.Song) {
+	dlFunc := getDownloadFunc(song.Source)
+	if dlFunc == nil {
+		return
+	}
+
+	urlStr, err := dlFunc(song)
+	if err != nil || urlStr == "" {
+		return
+	}
+
+	req, _ := http.NewRequest("GET", urlStr, nil)
+	req.Header.Set("Range", "bytes=0-1") // 只请求前2字节
+	req.Header.Set("User-Agent", UA_Common)
+	if song.Source == "bilibili" {
+		req.Header.Set("Referer", "https://www.bilibili.com/")
+	}
+	if song.Source == "migu" {
+		req.Header.Set("Referer", "http://music.migu.cn/")
+	}
+	if song.Source == "qq" {
+		req.Header.Set("Referer", "http://y.qq.com")
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	var size int64
+	if resp.StatusCode == 200 || resp.StatusCode == 206 {
+		// 优先从 Content-Range 获取总大小
+		cr := resp.Header.Get("Content-Range")
+		if parts := strings.Split(cr, "/"); len(parts) == 2 {
+			fmt.Sscanf(parts[1], "%d", &size)
+		}
+		// 降级使用 Content-Length
+		if size == 0 {
+			size = resp.ContentLength
+		}
+	}
+
+	if size > 0 {
+		song.Size = size
+		// 计算码率: Size(bytes) * 8 / Duration(seconds) / 1000 = kbps
+		if song.Duration > 0 {
+			song.Bitrate = int((size * 8) / int64(song.Duration) / 1000)
+		}
+	}
+}
+
+// 异步搜索/解析命令 (修改版)
 func searchCmd(keyword string, sources []string) tea.Cmd {
 	return func() tea.Msg {
+		// 1. 链接解析模式
+		if strings.HasPrefix(keyword, "http") {
+			src := detectSource(keyword)
+			if src == "" {
+				return searchErrorMsg(fmt.Errorf("不支持该链接的解析，或无法识别来源"))
+			}
+			parseFn := getParseFunc(src)
+			if parseFn == nil {
+				return searchErrorMsg(fmt.Errorf("暂不支持 %s 平台的链接解析", src))
+			}
+			song, err := parseFn(keyword)
+			if err != nil {
+				return searchErrorMsg(fmt.Errorf("解析失败: %v", err))
+			}
+			
+			// 解析成功后，立即探测文件大小和码率
+			probeSongDetails(song)
+
+			return searchResultMsg([]model.Song{*song})
+		}
+
+		// 2. 关键词搜索模式
 		targetSources := sources
 		if len(targetSources) == 0 {
 			targetSources = core.GetDefaultSourceNames()
@@ -472,7 +613,6 @@ func searchCmd(keyword string, sources []string) tea.Cmd {
 		var mu sync.Mutex
 
 		for _, src := range targetSources {
-			// 使用 getSearchFunc 工厂获取带 Cookie 的实例
 			fn := getSearchFunc(src)
 			if fn == nil {
 				continue
@@ -485,9 +625,7 @@ func searchCmd(keyword string, sources []string) tea.Cmd {
 				if err == nil && len(res) > 0 {
 					for i := range res {
 						res[i].Source = s
-					} // 确保 Source 字段正确
-
-					// 限制单源结果数量，避免刷屏
+					} 
 					if len(res) > 10 {
 						res = res[:10]
 					}
@@ -506,7 +644,7 @@ func searchCmd(keyword string, sources []string) tea.Cmd {
 	}
 }
 
-// 单曲下载命令 (完全重构，支持 Cookie)
+// 单曲下载命令
 func downloadNextCmd(queue []model.Song, outDir string, withCover bool, withLyrics bool) tea.Cmd {
 	return func() tea.Msg {
 		if len(queue) == 0 {
@@ -518,7 +656,7 @@ func downloadNextCmd(queue []model.Song, outDir string, withCover bool, withLyri
 	}
 }
 
-// 内部下载实现，替代 core.DownloadSongWithOptions
+// 内部下载实现
 func downloadSongWithCookie(song *model.Song, outDir string, withCover bool, withLyrics bool) error {
 	// 1. 准备目录
 	if err := os.MkdirAll(outDir, 0755); err != nil {
@@ -568,7 +706,6 @@ func downloadSongWithCookie(song *model.Song, outDir string, withCover bool, wit
 			return fmt.Errorf("下载链接为空")
 		}
 
-		// 下载二进制流
 		req, _ := http.NewRequest("GET", urlStr, nil)
 		req.Header.Set("User-Agent", UA_Common)
 		if song.Source == "bilibili" {
@@ -651,7 +788,7 @@ func (m modelState) View() string {
 		s.WriteString("请输入搜索关键字:\n")
 		s.WriteString(m.textInput.View())
 		s.WriteString(fmt.Sprintf("\n\n(当前源: %v)", getSourceDisplay(m.sources)))
-		s.WriteString("\n(按 Enter 搜索, Ctrl+C 退出)")
+		s.WriteString("\n(按 Enter 搜索/解析, Ctrl+C 退出)")
 		cm.mu.RLock()
 		if len(cm.cookies) > 0 {
 			var loadedSources []string
@@ -667,7 +804,7 @@ func (m modelState) View() string {
 			s.WriteString(lipgloss.NewStyle().Foreground(redColor).Render(fmt.Sprintf("\n\n❌ %v", m.err)))
 		}
 	case stateLoading:
-		s.WriteString(fmt.Sprintf("\n %s 正在全网搜索 '%s' ...\n", m.spinner.View(), m.textInput.Value()))
+		s.WriteString(fmt.Sprintf("\n %s 正在处理 '%s' ...\n", m.spinner.View(), m.textInput.Value()))
 	case stateList:
 		s.WriteString(m.renderTable())
 		s.WriteString("\n")

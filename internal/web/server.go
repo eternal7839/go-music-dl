@@ -86,7 +86,7 @@ func (m *CookieManager) SetAll(c map[string]string) {
 	}
 }
 
-// --- 工厂函数 (保持不变) ---
+// --- 工厂函数 ---
 
 func getSearchFunc(source string) func(string) ([]model.Song, error) {
 	c := cm.Get(source)
@@ -142,6 +142,38 @@ func getLyricFunc(source string) func(*model.Song) (string, error) {
 	}
 }
 
+// 新增：Parse 工厂函数
+func getParseFunc(source string) func(string) (*model.Song, error) {
+	c := cm.Get(source)
+	switch source {
+	case "netease": return netease.New(c).Parse
+	case "qq": return qq.New(c).Parse
+	case "kugou": return kugou.New(c).Parse
+	case "kuwo": return kuwo.New(c).Parse
+	case "migu": return migu.New(c).Parse
+	case "soda": return soda.New(c).Parse
+	case "bilibili": return bilibili.New(c).Parse
+	case "fivesing": return fivesing.New(c).Parse
+	case "jamendo": return jamendo.New(c).Parse
+	// Joox 和 Qianqian 暂不支持 Parse
+	default: return nil
+	}
+}
+
+// 新增：自动检测链接来源
+func detectSource(link string) string {
+	if strings.Contains(link, "163.com") { return "netease" }
+	if strings.Contains(link, "qq.com") { return "qq" }
+	if strings.Contains(link, "kugou.com") { return "kugou" }
+	if strings.Contains(link, "kuwo.cn") { return "kuwo" }
+	if strings.Contains(link, "migu.cn") { return "migu" }
+	if strings.Contains(link, "bilibili.com") || strings.Contains(link, "b23.tv") { return "bilibili" }
+	if strings.Contains(link, "douyin.com") || strings.Contains(link, "qishui") { return "soda" } // 汽水/抖音
+	if strings.Contains(link, "5sing") { return "fivesing" }
+	if strings.Contains(link, "jamendo.com") { return "jamendo" }
+	return ""
+}
+
 // --- Main ---
 
 func Start(port string) {
@@ -165,39 +197,63 @@ func Start(port string) {
 	})
 
 	r.GET("/", func(c *gin.Context) {
-		renderIndex(c, nil, "", nil)
+		renderIndex(c, nil, "", nil, "")
 	})
 
-	// Search
+	// Search & Parse
 	r.GET("/search", func(c *gin.Context) {
-		keyword := c.Query("q")
+		keyword := strings.TrimSpace(c.Query("q"))
 		sources := c.QueryArray("sources")
 		if len(sources) == 0 { sources = core.GetDefaultSourceNames() }
 
-		var wg sync.WaitGroup
-		var mu sync.Mutex
 		var allSongs []model.Song
+		var errorMsg string
 
-		for _, src := range sources {
-			fn := getSearchFunc(src)
-			if fn == nil { continue }
-			wg.Add(1)
-			go func(s string, f func(string) ([]model.Song, error)) {
-				defer wg.Done()
-				res, err := f(keyword)
-				if err == nil {
-					for i := range res { res[i].Source = s }
-					mu.Lock()
-					allSongs = append(allSongs, res...)
-					mu.Unlock()
+		// 1. 链接解析模式
+		if strings.HasPrefix(keyword, "http") {
+			src := detectSource(keyword)
+			if src == "" {
+				errorMsg = "不支持该链接的解析，或无法识别来源"
+			} else {
+				parseFn := getParseFunc(src)
+				if parseFn == nil {
+					errorMsg = fmt.Sprintf("暂不支持 %s 平台的链接解析", src)
+				} else {
+					song, err := parseFn(keyword)
+					if err != nil {
+						errorMsg = fmt.Sprintf("解析失败: %v", err)
+					} else {
+						allSongs = append(allSongs, *song)
+					}
 				}
-			}(src, fn)
+			}
+		} else {
+			// 2. 关键词搜索模式
+			var wg sync.WaitGroup
+			var mu sync.Mutex
+
+			for _, src := range sources {
+				fn := getSearchFunc(src)
+				if fn == nil { continue }
+				wg.Add(1)
+				go func(s string, f func(string) ([]model.Song, error)) {
+					defer wg.Done()
+					res, err := f(keyword)
+					if err == nil {
+						for i := range res { res[i].Source = s }
+						mu.Lock()
+						allSongs = append(allSongs, res...)
+						mu.Unlock()
+					}
+				}(src, fn)
+			}
+			wg.Wait()
 		}
-		wg.Wait()
-		renderIndex(c, allSongs, keyword, sources)
+		
+		renderIndex(c, allSongs, keyword, sources, errorMsg)
 	})
 
-	// Inspect (UI Display Only) - 逻辑保持不变
+	// Inspect (UI Display Only)
 	r.GET("/inspect", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
@@ -274,8 +330,7 @@ func Start(port string) {
 		})
 	})
 
-	// --- 重点修改区域: Download 接口 ---
-	// 实现了 HTTP Proxy 模式，支持 Range 头转发，从而支持拖动进度条
+	// Download
 	r.GET("/download", func(c *gin.Context) {
 		id := c.Query("id")
 		source := c.Query("source")
@@ -292,8 +347,6 @@ func Start(port string) {
 		tempSong := &model.Song{ID: id, Source: source, Name: name, Artist: artist}
 		filename := fmt.Sprintf("%s - %s.mp3", artist, name)
 
-		// 特殊处理 Soda: 需要解密，必须下载完整文件到内存
-		// 如果想支持 Soda 拖动，需要改为下载到临时文件后 ServeFile，这里保留内存逻辑作为 fallback
 		if source == "soda" {
 			cookie := cm.Get("soda")
 			sodaInst := soda.New(cookie)
@@ -321,9 +374,6 @@ func Start(port string) {
 			return
 		}
 
-		// --- 通用源流式处理 (Stream Proxy) ---
-		
-		// 1. 获取真实下载链接
 		dlFunc := getDownloadFunc(source)
 		if dlFunc == nil {
 			c.String(400, "Unknown source")
@@ -336,16 +386,11 @@ func Start(port string) {
 			return
 		}
 
-		// 2. 构建请求，转发 Header
 		req, _ := http.NewRequest("GET", downloadUrl, nil)
-		
-		// 关键点：将浏览器的 Range 头转发给上游服务器
-		// 浏览器想听 10秒-20秒 的数据，就会发 Range 头，我们必须透传
 		if rangeHeader := c.GetHeader("Range"); rangeHeader != "" {
 			req.Header.Set("Range", rangeHeader)
 		}
 
-		// 设置特定源的 Headers
 		req.Header.Set("User-Agent", UA_Common)
 		if source == "bilibili" { req.Header.Set("Referer", Ref_Bilibili) }
 		if source == "migu" { 
@@ -354,8 +399,6 @@ func Start(port string) {
 		}
 		if source == "qq" { req.Header.Set("Referer", "http://y.qq.com") }
 
-		// 3. 发起请求 (不读取 Body，建立管道)
-		// 注意：不要设置太短的 Timeout，因为流式传输可能持续很久
 		client := &http.Client{} 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -364,26 +407,18 @@ func Start(port string) {
 		}
 		defer resp.Body.Close()
 
-		// 4. 将上游的 Headers 转发给浏览器
-		// 尤其是 Content-Range, Content-Length, Content-Type, Accept-Ranges
 		for k, v := range resp.Header {
-			// 过滤掉一些可能引起问题的 Header，其他的全部转发
 			if k != "Transfer-Encoding" && k != "Date" {
 				c.Writer.Header()[k] = v
 			}
 		}
 
-		// 5. 强制设置文件名 (这必须在 c.Status 之前调用)
 		setDownloadHeader(c, filename)
-
-		// 6. 设置状态码 (200 OK 或 206 Partial Content)
 		c.Status(resp.StatusCode)
-
-		// 7. 直接将上游 Body 拷贝到下游 Writer，不经过内存 buffer
 		io.Copy(c.Writer, resp.Body)
 	})
 
-	// Download Lyric (保持不变)
+	// Download Lyric
 	r.GET("/download_lrc", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
@@ -407,7 +442,7 @@ func Start(port string) {
 		c.String(200, lrc)
 	})
 
-	// Download Cover (保持不变)
+	// Download Cover
 	r.GET("/download_cover", func(c *gin.Context) {
 		u := c.Query("url")
 		if u == "" { return }
@@ -419,7 +454,7 @@ func Start(port string) {
 		}
 	})
 
-	// Playback Lyric (保持不变)
+	// Playback Lyric
 	r.GET("/lyric", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
@@ -441,7 +476,7 @@ func Start(port string) {
 	r.Run(":" + port)
 }
 
-func renderIndex(c *gin.Context, songs []model.Song, q string, selected []string) {
+func renderIndex(c *gin.Context, songs []model.Song, q string, selected []string, errMsg string) {
 	allSrc := core.GetAllSourceNames()
 	desc := make(map[string]string)
 	for _, s := range allSrc { desc[s] = core.GetSourceDescription(s) }
@@ -452,6 +487,7 @@ func renderIndex(c *gin.Context, songs []model.Song, q string, selected []string
 		"DefaultSources":     core.GetDefaultSourceNames(),
 		"SourceDescriptions": desc,
 		"Selected":           selected,
+		"Error":              errMsg,
 	})
 }
 
@@ -463,8 +499,6 @@ func formatSize(s int64) string {
 func setDownloadHeader(c *gin.Context, filename string) {
 	encoded := url.QueryEscape(filename)
 	encoded = strings.ReplaceAll(encoded, "+", "%20")
-	// 设置 Content-Disposition 使得浏览器认为这是个文件，但对于 audio 标签，它会忽略 attachment 改为 inline 播放
-	// 如果你希望在浏览器直接打开而不是下载，可以改为 inline，但为了下载功能，保留 attachment 并在前端 audio 标签使用即可
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"; filename*=utf-8''%s", encoded, encoded))
 }
 

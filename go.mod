@@ -7,7 +7,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/gin-gonic/gin v1.11.0
-	github.com/guohuiyuan/music-lib v1.0.2
+	github.com/guohuiyuan/music-lib v1.0.3-0.20260130084448-fc942835049a
 	github.com/spf13/cobra v1.10.2
 )
 
