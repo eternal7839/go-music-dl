@@ -152,7 +152,6 @@
         .btn-play:hover { transform: scale(1.1); }
         .btn-dl { background: #f7fafc; color: var(--text-sub); border: 1px solid #e2e8f0; }
         .btn-dl:hover { border-color: var(--primary-color); color: var(--primary-color); }
-        /* btn-disabled Removed */
 
         .no-results { text-align: center; padding: 60px; color: var(--text-sub); }
 
@@ -188,7 +187,7 @@
             color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer;
         }
 
-        /* APlayer Fix - Original Style */
+        /* APlayer Fix */
         .aplayer.aplayer-fixed .aplayer-lrc {
             margin-bottom: 20px; 
             padding-bottom: 20px; 
@@ -212,16 +211,131 @@
         #waifu { left: 20px !important; bottom: 90px !important; z-index: 99999 !important; pointer-events: none !important; }
         #waifu canvas, #waifu-tool, #waifu-tips { pointer-events: auto !important; }
 
+        /* =========================================
+           MOBILE ADAPTATION (UPDATED)
+           ========================================= */
         @media (max-width: 768px) {
+            /* Hide Waifu Widget on Mobile */
             #waifu { display: none; }
-            .container { padding: 0; }
-            .search-box { padding: 20px; border-radius: 0 0 20px 20px; }
-            .source-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
-            .source-card { padding: 8px 4px; }
+
+            /* Body: Reduce padding to use full screen, leave space for APlayer */
+            body {
+                padding: 0 0 100px 0; 
+                background-size: 100% 400px;
+            }
+
+            .container { 
+                padding: 0; 
+                width: 100%; 
+            }
+
+            /* Search Box: Compact style attached to top */
+            .search-box { 
+                padding: 20px 15px; 
+                border-radius: 0 0 20px 20px; 
+                margin-bottom: 20px;
+                border-left: none;
+                border-right: none;
+                border-top: none;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+                margin-bottom: 20px;
+            }
+
+            .input-group {
+                margin-bottom: 15px;
+            }
+
+            /* Source Grid: Auto-fill to prevent text overflow */
+            .source-grid { 
+                grid-template-columns: repeat(auto-fill, minmax(85px, 1fr)); 
+                gap: 8px; 
+            }
+            
+            .source-card { 
+                padding: 8px 4px; 
+                min-height: 40px;
+                justify-content: center;
+            }
+            
             .source-name { font-size: 12px; }
-            .source-desc { font-size: 9px; transform: scale(0.9); }
-            .song-card { border-radius: 12px; margin: 0 15px 15px; }
-            .settings-float { top: 20px; right: 20px; }
+            
+            .source-desc { 
+                font-size: 9px; 
+                transform: scale(0.9); 
+                white-space: nowrap;
+                margin-top: 2px;
+                display: none; /* Optional: Hide description on very small screens if needed */
+            }
+
+            /* Results: Add side padding */
+            .result-list {
+                padding: 0 12px;
+                gap: 12px;
+            }
+
+            /* Song Card: Compact layout */
+            .song-card { 
+                margin: 0; 
+                padding: 12px; 
+                border-radius: 12px; 
+            }
+
+            /* Cover: Smaller */
+            .cover-wrapper {
+                width: 54px; 
+                height: 54px; 
+                margin-right: 12px;
+                border-radius: 8px;
+            }
+
+            /* Song Info: Truncate text */
+            .song-info h3 {
+                font-size: 15px;
+                margin-bottom: 4px;
+                max-width: 100%;
+            }
+
+            .artist-line {
+                font-size: 12px;
+                margin-bottom: 6px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 180px; 
+            }
+
+            .tags { flex-wrap: wrap; }
+            .tag { padding: 2px 5px; }
+
+            /* Actions: Prevent squishing */
+            .actions { 
+                gap: 8px; 
+                flex-shrink: 0; 
+            }
+            
+            .btn-circle {
+                width: 34px;
+                height: 34px;
+                font-size: 13px;
+            }
+
+            /* Settings Button: Adjust position */
+            .settings-float { 
+                top: 15px; 
+                right: 15px; 
+                width: 36px;
+                height: 36px;
+            }
+            
+            /* Modal: fit mobile screen */
+            .modal {
+                width: 85%;
+                max-height: 80vh;
+                padding: 20px;
+            }
         }
     </style>
 </head>
