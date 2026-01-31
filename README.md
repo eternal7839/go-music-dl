@@ -133,6 +133,8 @@ go-music-dl/
 - **CLI 框架**: [Cobra](https://github.com/spf13/cobra) - 命令行工具
 - **Web 框架**: [Gin](https://github.com/gin-gonic/gin) - Web 框架
 - **TUI 框架**: [Bubble Tea](https://github.com/charmbracelet/bubbletea) - 终端界面
+- **下载库**: [music-dl](https://github.com/0xHJK/music-dl) - 音乐下载库
+- **下载库**: [musicdl](https://github.com/CharlesPikachu/musicdl) - 音乐下载库
 
 ## 贡献
 
@@ -140,7 +142,7 @@ go-music-dl/
 
 ## 许可证
 
-基于 [GNU Affero General Public License v3.0](https://github.com/guohuiyuan/go-music-dl/blob/main/LICENSE) 许可。
+本项目基于 [CharlesPikachu/musicdl](https://github.com/CharlesPikachu/musicdl) 的核心设计思路开发，遵循 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) 协议，禁止任何商业使用。
 
 ## 免责声明
 
