@@ -46,7 +46,7 @@ const (
 	CookieFile   = "cookies.json"
 )
 
-// --- Cookie 管理 (保持不变) ---
+// --- Cookie 管理 ---
 type CookieManager struct {
 	mu      sync.RWMutex
 	cookies map[string]string
@@ -106,6 +106,34 @@ func getSearchFunc(source string) func(string) ([]model.Song, error) {
 	}
 }
 
+// [新增] 歌单搜索工厂
+func getPlaylistSearchFunc(source string) func(string) ([]model.Playlist, error) {
+	c := cm.Get(source)
+	switch source {
+	case "netease": return netease.New(c).SearchPlaylist
+	case "qq": return qq.New(c).SearchPlaylist
+	case "kugou": return kugou.New(c).SearchPlaylist
+	case "kuwo": return kuwo.New(c).SearchPlaylist
+	case "soda": return soda.New(c).SearchPlaylist
+	case "fivesing": return fivesing.New(c).SearchPlaylist
+	default: return nil
+	}
+}
+
+// [新增] 歌单详情工厂
+func getPlaylistDetailFunc(source string) func(string) ([]model.Song, error) {
+	c := cm.Get(source)
+	switch source {
+	case "netease": return netease.New(c).GetPlaylistSongs
+	case "qq": return qq.New(c).GetPlaylistSongs
+	case "kugou": return kugou.New(c).GetPlaylistSongs
+	case "kuwo": return kuwo.New(c).GetPlaylistSongs
+	case "soda": return soda.New(c).GetPlaylistSongs
+	case "fivesing": return fivesing.New(c).GetPlaylistSongs
+	default: return nil
+	}
+}
+
 func getDownloadFunc(source string) func(*model.Song) (string, error) {
 	c := cm.Get(source)
 	switch source {
@@ -142,7 +170,6 @@ func getLyricFunc(source string) func(*model.Song) (string, error) {
 	}
 }
 
-// 新增：Parse 工厂函数
 func getParseFunc(source string) func(string) (*model.Song, error) {
 	c := cm.Get(source)
 	switch source {
@@ -155,12 +182,10 @@ func getParseFunc(source string) func(string) (*model.Song, error) {
 	case "bilibili": return bilibili.New(c).Parse
 	case "fivesing": return fivesing.New(c).Parse
 	case "jamendo": return jamendo.New(c).Parse
-	// Joox 和 Qianqian 暂不支持 Parse
 	default: return nil
 	}
 }
 
-// 新增：自动检测链接来源
 func detectSource(link string) string {
 	if strings.Contains(link, "163.com") { return "netease" }
 	if strings.Contains(link, "qq.com") { return "qq" }
@@ -168,7 +193,7 @@ func detectSource(link string) string {
 	if strings.Contains(link, "kuwo.cn") { return "kuwo" }
 	if strings.Contains(link, "migu.cn") { return "migu" }
 	if strings.Contains(link, "bilibili.com") || strings.Contains(link, "b23.tv") { return "bilibili" }
-	if strings.Contains(link, "douyin.com") || strings.Contains(link, "qishui") { return "soda" } // 汽水/抖音
+	if strings.Contains(link, "douyin.com") || strings.Contains(link, "qishui") { return "soda" } 
 	if strings.Contains(link, "5sing") { return "fivesing" }
 	if strings.Contains(link, "jamendo.com") { return "jamendo" }
 	return ""
@@ -197,19 +222,29 @@ func Start(port string) {
 	})
 
 	r.GET("/", func(c *gin.Context) {
-		renderIndex(c, nil, "", nil, "")
+		renderIndex(c, nil, nil, "", nil, "", "song")
 	})
 
-	// Search & Parse
+	// Search (Song & Playlist)
 	r.GET("/search", func(c *gin.Context) {
 		keyword := strings.TrimSpace(c.Query("q"))
+		searchType := c.DefaultQuery("type", "song") // song or playlist
 		sources := c.QueryArray("sources")
-		if len(sources) == 0 { sources = core.GetDefaultSourceNames() }
+		
+		// 默认源逻辑
+		if len(sources) == 0 { 
+			if searchType == "playlist" {
+				sources = core.GetPlaylistSourceNames() // 仅返回支持歌单的源
+			} else {
+				sources = core.GetDefaultSourceNames() 
+			}
+		}
 
 		var allSongs []model.Song
+		var allPlaylists []model.Playlist
 		var errorMsg string
 
-		// 1. 链接解析模式
+		// 1. 链接解析模式 (仅支持单曲)
 		if strings.HasPrefix(keyword, "http") {
 			src := detectSource(keyword)
 			if src == "" {
@@ -227,33 +262,76 @@ func Start(port string) {
 					}
 				}
 			}
+			// 强制为单曲模式展示结果
+			searchType = "song"
 		} else {
 			// 2. 关键词搜索模式
 			var wg sync.WaitGroup
 			var mu sync.Mutex
 
 			for _, src := range sources {
-				fn := getSearchFunc(src)
-				if fn == nil { continue }
 				wg.Add(1)
-				go func(s string, f func(string) ([]model.Song, error)) {
+				go func(s string) {
 					defer wg.Done()
-					res, err := f(keyword)
-					if err == nil {
-						for i := range res { res[i].Source = s }
-						mu.Lock()
-						allSongs = append(allSongs, res...)
-						mu.Unlock()
+					
+					if searchType == "playlist" {
+						// 歌单搜索
+						fn := getPlaylistSearchFunc(s)
+						if fn != nil {
+							res, err := fn(keyword)
+							if err == nil {
+								mu.Lock()
+								allPlaylists = append(allPlaylists, res...)
+								mu.Unlock()
+							}
+						}
+					} else {
+						// 单曲搜索
+						fn := getSearchFunc(s)
+						if fn != nil {
+							res, err := fn(keyword)
+							if err == nil {
+								for i := range res { res[i].Source = s }
+								mu.Lock()
+								allSongs = append(allSongs, res...)
+								mu.Unlock()
+							}
+						}
 					}
-				}(src, fn)
+				}(src)
 			}
 			wg.Wait()
 		}
 		
-		renderIndex(c, allSongs, keyword, sources, errorMsg)
+		renderIndex(c, allSongs, allPlaylists, keyword, sources, errorMsg, searchType)
 	})
 
-	// Inspect (UI Display Only)
+	// [新增] 获取歌单详情并渲染
+	r.GET("/playlist", func(c *gin.Context) {
+		id := c.Query("id")
+		src := c.Query("source")
+		if id == "" || src == "" {
+			renderIndex(c, nil, nil, "", nil, "缺少参数", "song")
+			return
+		}
+
+		fn := getPlaylistDetailFunc(src)
+		if fn == nil {
+			renderIndex(c, nil, nil, "", nil, "该源不支持查看歌单详情", "song")
+			return
+		}
+
+		songs, err := fn(id)
+		errMsg := ""
+		if err != nil {
+			errMsg = fmt.Sprintf("获取歌单失败: %v", err)
+		}
+		
+		// 渲染为单曲列表模式，但保留上下文
+		renderIndex(c, songs, nil, "", []string{src}, errMsg, "song")
+	})
+
+	// Inspect
 	r.GET("/inspect", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
@@ -330,7 +408,7 @@ func Start(port string) {
 		})
 	})
 
-	// Download
+	// Download Logic (Same as before)
 	r.GET("/download", func(c *gin.Context) {
 		id := c.Query("id")
 		source := c.Query("source")
@@ -418,7 +496,6 @@ func Start(port string) {
 		io.Copy(c.Writer, resp.Body)
 	})
 
-	// Download Lyric
 	r.GET("/download_lrc", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
@@ -442,7 +519,6 @@ func Start(port string) {
 		c.String(200, lrc)
 	})
 
-	// Download Cover
 	r.GET("/download_cover", func(c *gin.Context) {
 		u := c.Query("url")
 		if u == "" { return }
@@ -454,7 +530,6 @@ func Start(port string) {
 		}
 	})
 
-	// Playback Lyric
 	r.GET("/lyric", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
@@ -469,25 +544,34 @@ func Start(port string) {
 		c.String(200, "[00:00.00] 暂无歌词")
 	})
 
-	// Start
 	urlStr := "http://localhost:" + port
 	fmt.Printf("Web started at %s\n", urlStr)
 	go func() { time.Sleep(500 * time.Millisecond); openBrowser(urlStr) }()
 	r.Run(":" + port)
 }
 
-func renderIndex(c *gin.Context, songs []model.Song, q string, selected []string, errMsg string) {
+func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist, q string, selected []string, errMsg string, searchType string) {
 	allSrc := core.GetAllSourceNames()
 	desc := make(map[string]string)
 	for _, s := range allSrc { desc[s] = core.GetSourceDescription(s) }
+	
+	// 标记哪些源支持歌单
+	playlistSupported := make(map[string]bool)
+	for _, s := range core.GetPlaylistSourceNames() {
+		playlistSupported[s] = true
+	}
+
 	c.HTML(200, "index.html", gin.H{
 		"Result":             songs,
+		"Playlists":          playlists,
 		"Keyword":            q,
 		"AllSources":         allSrc,
 		"DefaultSources":     core.GetDefaultSourceNames(),
 		"SourceDescriptions": desc,
 		"Selected":           selected,
 		"Error":              errMsg,
+		"SearchType":         searchType,
+		"PlaylistSupported":  playlistSupported,
 	})
 }
 
