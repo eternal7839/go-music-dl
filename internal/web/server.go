@@ -19,7 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/guohuiyuan/go-music-dl/core"
-	
+
 	"github.com/guohuiyuan/music-lib/bilibili"
 	"github.com/guohuiyuan/music-lib/fivesing"
 	"github.com/guohuiyuan/music-lib/jamendo"
@@ -91,18 +91,30 @@ func (m *CookieManager) SetAll(c map[string]string) {
 func getSearchFunc(source string) func(string) ([]model.Song, error) {
 	c := cm.Get(source)
 	switch source {
-	case "netease": return netease.New(c).Search
-	case "qq": return qq.New(c).Search
-	case "kugou": return kugou.New(c).Search
-	case "kuwo": return kuwo.New(c).Search
-	case "migu": return migu.New(c).Search
-	case "soda": return soda.New(c).Search
-	case "bilibili": return bilibili.New(c).Search
-	case "fivesing": return fivesing.New(c).Search
-	case "jamendo": return jamendo.New(c).Search
-	case "joox": return joox.New(c).Search
-	case "qianqian": return qianqian.New(c).Search
-	default: return nil
+	case "netease":
+		return netease.New(c).Search
+	case "qq":
+		return qq.New(c).Search
+	case "kugou":
+		return kugou.New(c).Search
+	case "kuwo":
+		return kuwo.New(c).Search
+	case "migu":
+		return migu.New(c).Search
+	case "soda":
+		return soda.New(c).Search
+	case "bilibili":
+		return bilibili.New(c).Search
+	case "fivesing":
+		return fivesing.New(c).Search
+	case "jamendo":
+		return jamendo.New(c).Search
+	case "joox":
+		return joox.New(c).Search
+	case "qianqian":
+		return qianqian.New(c).Search
+	default:
+		return nil
 	}
 }
 
@@ -110,13 +122,20 @@ func getSearchFunc(source string) func(string) ([]model.Song, error) {
 func getPlaylistSearchFunc(source string) func(string) ([]model.Playlist, error) {
 	c := cm.Get(source)
 	switch source {
-	case "netease": return netease.New(c).SearchPlaylist
-	case "qq": return qq.New(c).SearchPlaylist
-	case "kugou": return kugou.New(c).SearchPlaylist
-	case "kuwo": return kuwo.New(c).SearchPlaylist
-	case "soda": return soda.New(c).SearchPlaylist
-	case "fivesing": return fivesing.New(c).SearchPlaylist
-	default: return nil
+	case "netease":
+		return netease.New(c).SearchPlaylist
+	case "qq":
+		return qq.New(c).SearchPlaylist
+	case "kugou":
+		return kugou.New(c).SearchPlaylist
+	case "kuwo":
+		return kuwo.New(c).SearchPlaylist
+	case "soda":
+		return soda.New(c).SearchPlaylist
+	case "fivesing":
+		return fivesing.New(c).SearchPlaylist
+	default:
+		return nil
 	}
 }
 
@@ -124,78 +143,158 @@ func getPlaylistSearchFunc(source string) func(string) ([]model.Playlist, error)
 func getPlaylistDetailFunc(source string) func(string) ([]model.Song, error) {
 	c := cm.Get(source)
 	switch source {
-	case "netease": return netease.New(c).GetPlaylistSongs
-	case "qq": return qq.New(c).GetPlaylistSongs
-	case "kugou": return kugou.New(c).GetPlaylistSongs
-	case "kuwo": return kuwo.New(c).GetPlaylistSongs
-	case "soda": return soda.New(c).GetPlaylistSongs
-	case "fivesing": return fivesing.New(c).GetPlaylistSongs
-	default: return nil
+	case "netease":
+		return netease.New(c).GetPlaylistSongs
+	case "qq":
+		return qq.New(c).GetPlaylistSongs
+	case "kugou":
+		return kugou.New(c).GetPlaylistSongs
+	case "kuwo":
+		return kuwo.New(c).GetPlaylistSongs
+	case "soda":
+		return soda.New(c).GetPlaylistSongs
+	case "fivesing":
+		return fivesing.New(c).GetPlaylistSongs
+	default:
+		return nil
 	}
 }
 
 func getDownloadFunc(source string) func(*model.Song) (string, error) {
 	c := cm.Get(source)
 	switch source {
-	case "netease": return netease.New(c).GetDownloadURL
-	case "qq": return qq.New(c).GetDownloadURL
-	case "kugou": return kugou.New(c).GetDownloadURL
-	case "kuwo": return kuwo.New(c).GetDownloadURL
-	case "migu": return migu.New(c).GetDownloadURL
-	case "soda": return soda.New(c).GetDownloadURL
-	case "bilibili": return bilibili.New(c).GetDownloadURL
-	case "fivesing": return fivesing.New(c).GetDownloadURL
-	case "jamendo": return jamendo.New(c).GetDownloadURL
-	case "joox": return joox.New(c).GetDownloadURL
-	case "qianqian": return qianqian.New(c).GetDownloadURL
-	default: return nil
+	case "netease":
+		return netease.New(c).GetDownloadURL
+	case "qq":
+		return qq.New(c).GetDownloadURL
+	case "kugou":
+		return kugou.New(c).GetDownloadURL
+	case "kuwo":
+		return kuwo.New(c).GetDownloadURL
+	case "migu":
+		return migu.New(c).GetDownloadURL
+	case "soda":
+		return soda.New(c).GetDownloadURL
+	case "bilibili":
+		return bilibili.New(c).GetDownloadURL
+	case "fivesing":
+		return fivesing.New(c).GetDownloadURL
+	case "jamendo":
+		return jamendo.New(c).GetDownloadURL
+	case "joox":
+		return joox.New(c).GetDownloadURL
+	case "qianqian":
+		return qianqian.New(c).GetDownloadURL
+	default:
+		return nil
 	}
 }
 
 func getLyricFunc(source string) func(*model.Song) (string, error) {
 	c := cm.Get(source)
 	switch source {
-	case "netease": return netease.New(c).GetLyrics
-	case "qq": return qq.New(c).GetLyrics
-	case "kugou": return kugou.New(c).GetLyrics
-	case "kuwo": return kuwo.New(c).GetLyrics
-	case "migu": return migu.New(c).GetLyrics
-	case "soda": return soda.New(c).GetLyrics
-	case "bilibili": return bilibili.New(c).GetLyrics
-	case "fivesing": return fivesing.New(c).GetLyrics
-	case "jamendo": return jamendo.New(c).GetLyrics
-	case "joox": return joox.New(c).GetLyrics
-	case "qianqian": return qianqian.New(c).GetLyrics
-	default: return nil
+	case "netease":
+		return netease.New(c).GetLyrics
+	case "qq":
+		return qq.New(c).GetLyrics
+	case "kugou":
+		return kugou.New(c).GetLyrics
+	case "kuwo":
+		return kuwo.New(c).GetLyrics
+	case "migu":
+		return migu.New(c).GetLyrics
+	case "soda":
+		return soda.New(c).GetLyrics
+	case "bilibili":
+		return bilibili.New(c).GetLyrics
+	case "fivesing":
+		return fivesing.New(c).GetLyrics
+	case "jamendo":
+		return jamendo.New(c).GetLyrics
+	case "joox":
+		return joox.New(c).GetLyrics
+	case "qianqian":
+		return qianqian.New(c).GetLyrics
+	default:
+		return nil
 	}
 }
 
 func getParseFunc(source string) func(string) (*model.Song, error) {
 	c := cm.Get(source)
 	switch source {
-	case "netease": return netease.New(c).Parse
-	case "qq": return qq.New(c).Parse
-	case "kugou": return kugou.New(c).Parse
-	case "kuwo": return kuwo.New(c).Parse
-	case "migu": return migu.New(c).Parse
-	case "soda": return soda.New(c).Parse
-	case "bilibili": return bilibili.New(c).Parse
-	case "fivesing": return fivesing.New(c).Parse
-	case "jamendo": return jamendo.New(c).Parse
-	default: return nil
+	case "netease":
+		return netease.New(c).Parse
+	case "qq":
+		return qq.New(c).Parse
+	case "kugou":
+		return kugou.New(c).Parse
+	case "kuwo":
+		return kuwo.New(c).Parse
+	case "migu":
+		return migu.New(c).Parse
+	case "soda":
+		return soda.New(c).Parse
+	case "bilibili":
+		return bilibili.New(c).Parse
+	case "fivesing":
+		return fivesing.New(c).Parse
+	case "jamendo":
+		return jamendo.New(c).Parse
+	default:
+		return nil
+	}
+}
+
+// [新增] 歌单解析工厂
+func getParsePlaylistFunc(source string) func(string) (*model.Playlist, []model.Song, error) {
+	c := cm.Get(source)
+	switch source {
+	case "netease":
+		return netease.New(c).ParsePlaylist
+	case "qq":
+		return qq.New(c).ParsePlaylist
+	case "kugou":
+		return kugou.New(c).ParsePlaylist
+	case "kuwo":
+		return kuwo.New(c).ParsePlaylist
+	case "soda":
+		return soda.New(c).ParsePlaylist
+	case "fivesing":
+		return fivesing.New(c).ParsePlaylist
+	default:
+		return nil
 	}
 }
 
 func detectSource(link string) string {
-	if strings.Contains(link, "163.com") { return "netease" }
-	if strings.Contains(link, "qq.com") { return "qq" }
-	if strings.Contains(link, "kugou.com") { return "kugou" }
-	if strings.Contains(link, "kuwo.cn") { return "kuwo" }
-	if strings.Contains(link, "migu.cn") { return "migu" }
-	if strings.Contains(link, "bilibili.com") || strings.Contains(link, "b23.tv") { return "bilibili" }
-	if strings.Contains(link, "douyin.com") || strings.Contains(link, "qishui") { return "soda" } 
-	if strings.Contains(link, "5sing") { return "fivesing" }
-	if strings.Contains(link, "jamendo.com") { return "jamendo" }
+	if strings.Contains(link, "163.com") {
+		return "netease"
+	}
+	if strings.Contains(link, "qq.com") {
+		return "qq"
+	}
+	if strings.Contains(link, "kugou.com") {
+		return "kugou"
+	}
+	if strings.Contains(link, "kuwo.cn") {
+		return "kuwo"
+	}
+	if strings.Contains(link, "migu.cn") {
+		return "migu"
+	}
+	if strings.Contains(link, "bilibili.com") || strings.Contains(link, "b23.tv") {
+		return "bilibili"
+	}
+	if strings.Contains(link, "douyin.com") || strings.Contains(link, "qishui") {
+		return "soda"
+	}
+	if strings.Contains(link, "5sing") {
+		return "fivesing"
+	}
+	if strings.Contains(link, "jamendo.com") {
+		return "jamendo"
+	}
 	return ""
 }
 
@@ -230,13 +329,13 @@ func Start(port string) {
 		keyword := strings.TrimSpace(c.Query("q"))
 		searchType := c.DefaultQuery("type", "song") // song or playlist
 		sources := c.QueryArray("sources")
-		
+
 		// 默认源逻辑
-		if len(sources) == 0 { 
+		if len(sources) == 0 {
 			if searchType == "playlist" {
 				sources = core.GetPlaylistSourceNames() // 仅返回支持歌单的源
 			} else {
-				sources = core.GetDefaultSourceNames() 
+				sources = core.GetDefaultSourceNames()
 			}
 		}
 
@@ -244,26 +343,47 @@ func Start(port string) {
 		var allPlaylists []model.Playlist
 		var errorMsg string
 
-		// 1. 链接解析模式 (仅支持单曲)
+		// 1. 链接解析模式 (支持单曲和歌单)
 		if strings.HasPrefix(keyword, "http") {
 			src := detectSource(keyword)
 			if src == "" {
 				errorMsg = "不支持该链接的解析，或无法识别来源"
 			} else {
+				parsed := false
+
+				// 优先尝试单曲解析
 				parseFn := getParseFunc(src)
-				if parseFn == nil {
-					errorMsg = fmt.Sprintf("暂不支持 %s 平台的链接解析", src)
-				} else {
-					song, err := parseFn(keyword)
-					if err != nil {
-						errorMsg = fmt.Sprintf("解析失败: %v", err)
-					} else {
+				if parseFn != nil {
+					if song, err := parseFn(keyword); err == nil {
 						allSongs = append(allSongs, *song)
+						searchType = "song" // 必须切换为单曲模式才能展示
+						parsed = true
 					}
 				}
+
+				// 如果单曲失败，尝试歌单解析
+				if !parsed {
+					parsePlaylistFn := getParsePlaylistFunc(src)
+					if parsePlaylistFn != nil {
+						if playlist, songs, err := parsePlaylistFn(keyword); err == nil {
+							if searchType == "playlist" {
+								// 如果用户是在搜歌单，展示歌单卡片Result
+								allPlaylists = append(allPlaylists, *playlist)
+							} else {
+								// 否则直接展示歌单内歌曲列表
+								allSongs = append(allSongs, songs...)
+								searchType = "song"
+							}
+							parsed = true
+						}
+					}
+				}
+
+				if !parsed {
+					errorMsg = fmt.Sprintf("解析失败: 暂不支持 %s 平台的此链接类型或解析出错", src)
+				}
 			}
-			// 强制为单曲模式展示结果
-			searchType = "song"
+			// 避免进入下方关键词搜索
 		} else {
 			// 2. 关键词搜索模式
 			var wg sync.WaitGroup
@@ -273,7 +393,7 @@ func Start(port string) {
 				wg.Add(1)
 				go func(s string) {
 					defer wg.Done()
-					
+
 					if searchType == "playlist" {
 						// 歌单搜索
 						fn := getPlaylistSearchFunc(s)
@@ -291,7 +411,9 @@ func Start(port string) {
 						if fn != nil {
 							res, err := fn(keyword)
 							if err == nil {
-								for i := range res { res[i].Source = s }
+								for i := range res {
+									res[i].Source = s
+								}
 								mu.Lock()
 								allSongs = append(allSongs, res...)
 								mu.Unlock()
@@ -302,7 +424,7 @@ func Start(port string) {
 			}
 			wg.Wait()
 		}
-		
+
 		renderIndex(c, allSongs, allPlaylists, keyword, sources, errorMsg, searchType)
 	})
 
@@ -326,7 +448,7 @@ func Start(port string) {
 		if err != nil {
 			errMsg = fmt.Sprintf("获取歌单失败: %v", err)
 		}
-		
+
 		// 渲染为单曲列表模式，但保留上下文
 		renderIndex(c, songs, nil, "", []string{src}, errMsg, "song")
 	})
@@ -339,7 +461,7 @@ func Start(port string) {
 
 		var urlStr string
 		var err error
-		
+
 		if src == "soda" {
 			cookie := cm.Get("soda")
 			sodaInst := soda.New(cookie)
@@ -363,18 +485,22 @@ func Start(port string) {
 		}
 
 		req, _ := http.NewRequest("GET", urlStr, nil)
-		req.Header.Set("Range", "bytes=0-1") 
+		req.Header.Set("Range", "bytes=0-1")
 		req.Header.Set("User-Agent", UA_Common)
-		if src == "bilibili" { req.Header.Set("Referer", Ref_Bilibili) }
-		if src == "migu" { 
-			req.Header.Set("User-Agent", UA_Mobile)
-			req.Header.Set("Referer", Ref_Migu) 
+		if src == "bilibili" {
+			req.Header.Set("Referer", Ref_Bilibili)
 		}
-		if src == "qq" { req.Header.Set("Referer", "http://y.qq.com") }
+		if src == "migu" {
+			req.Header.Set("User-Agent", UA_Mobile)
+			req.Header.Set("Referer", Ref_Migu)
+		}
+		if src == "qq" {
+			req.Header.Set("Referer", "http://y.qq.com")
+		}
 
 		client := &http.Client{Timeout: 5 * time.Second}
 		resp, err := client.Do(req)
-		
+
 		valid := false
 		var size int64 = 0
 
@@ -419,8 +545,12 @@ func Start(port string) {
 			c.String(400, "Missing params")
 			return
 		}
-		if name == "" { name = "Unknown" }
-		if artist == "" { artist = "Unknown" }
+		if name == "" {
+			name = "Unknown"
+		}
+		if artist == "" {
+			artist = "Unknown"
+		}
 
 		tempSong := &model.Song{ID: id, Source: source, Name: name, Artist: artist}
 		filename := fmt.Sprintf("%s - %s.mp3", artist, name)
@@ -470,14 +600,18 @@ func Start(port string) {
 		}
 
 		req.Header.Set("User-Agent", UA_Common)
-		if source == "bilibili" { req.Header.Set("Referer", Ref_Bilibili) }
-		if source == "migu" { 
-			req.Header.Set("User-Agent", UA_Mobile)
-			req.Header.Set("Referer", Ref_Migu) 
+		if source == "bilibili" {
+			req.Header.Set("Referer", Ref_Bilibili)
 		}
-		if source == "qq" { req.Header.Set("Referer", "http://y.qq.com") }
+		if source == "migu" {
+			req.Header.Set("User-Agent", UA_Mobile)
+			req.Header.Set("Referer", Ref_Migu)
+		}
+		if source == "qq" {
+			req.Header.Set("Referer", "http://y.qq.com")
+		}
 
-		client := &http.Client{} 
+		client := &http.Client{}
 		resp, err := client.Do(req)
 		if err != nil {
 			c.String(502, "Upstream stream error")
@@ -507,13 +641,13 @@ func Start(port string) {
 			c.String(404, "No support")
 			return
 		}
-		
+
 		lrc, err := fn(&model.Song{ID: id, Source: src})
 		if err != nil || lrc == "" {
 			c.String(404, "Lyric not found")
 			return
 		}
-		
+
 		filename := fmt.Sprintf("%s - %s.lrc", artist, name)
 		setDownloadHeader(c, filename)
 		c.String(200, lrc)
@@ -521,7 +655,9 @@ func Start(port string) {
 
 	r.GET("/download_cover", func(c *gin.Context) {
 		u := c.Query("url")
-		if u == "" { return }
+		if u == "" {
+			return
+		}
 		resp, err := utils.Get(u, utils.WithHeader("User-Agent", UA_Common))
 		if err == nil {
 			filename := fmt.Sprintf("%s - %s.jpg", c.Query("artist"), c.Query("name"))
@@ -553,8 +689,10 @@ func Start(port string) {
 func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist, q string, selected []string, errMsg string, searchType string) {
 	allSrc := core.GetAllSourceNames()
 	desc := make(map[string]string)
-	for _, s := range allSrc { desc[s] = core.GetSourceDescription(s) }
-	
+	for _, s := range allSrc {
+		desc[s] = core.GetSourceDescription(s)
+	}
+
 	// 标记哪些源支持歌单
 	playlistSupported := make(map[string]bool)
 	for _, s := range core.GetPlaylistSourceNames() {
@@ -576,7 +714,9 @@ func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist,
 }
 
 func formatSize(s int64) string {
-	if s <= 0 { return "-" }
+	if s <= 0 {
+		return "-"
+	}
 	return fmt.Sprintf("%.1f MB", float64(s)/1024/1024)
 }
 
@@ -590,9 +730,12 @@ func openBrowser(url string) {
 	var cmd string
 	var args []string
 	switch runtime.GOOS {
-	case "windows": cmd, args = "cmd", []string{"/c", "start"}
-	case "darwin": cmd = "open"
-	default: cmd = "xdg-open"
+	case "windows":
+		cmd, args = "cmd", []string{"/c", "start"}
+	case "darwin":
+		cmd = "open"
+	default:
+		cmd = "xdg-open"
 	}
 	args = append(args, url)
 	_ = exec.Command(cmd, args...).Start()
