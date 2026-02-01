@@ -247,6 +247,7 @@
         }
 
         /* APlayer & Waifu */
+        /* Desktop Style - Keeping this consistent */
         .aplayer.aplayer-fixed .aplayer-lrc {
             margin-bottom: 20px; padding-bottom: 20px; text-shadow: none !important;
             -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%);
@@ -299,6 +300,16 @@
             .btn-circle { width: 34px; height: 34px; font-size: 13px; }
             .settings-float { top: 15px; right: 15px; width: 36px; height: 36px; }
             .modal { width: 85%; max-height: 80vh; padding: 20px; }
+
+            /* ========================================================== */
+            /* 移动端歌词优化：移除黑色阴影，保持与桌面端一致            */
+            /* ========================================================== */
+            .aplayer.aplayer-fixed .aplayer-lrc {
+                bottom: 120px !important; /* 位置上移，避免遮挡 */
+                margin-bottom: 0 !important;
+                max-height: 90px !important;
+                text-shadow: none !important; /* 【修改】移除黑色阴影 */
+            }
         }
     </style>
 </head>
