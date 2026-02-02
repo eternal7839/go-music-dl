@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -316,6 +318,7 @@ const (
 	stateList                               // 歌曲结果列表 & 选择
 	statePlaylistResult                     // 歌单结果列表
 	stateDownloading                        // 下载中
+	stateSwitching                          // 换源中
 )
 
 // --- 主模型 ---
@@ -341,6 +344,11 @@ type modelState struct {
 	downloadQueue []model.Song // 待下载队列
 	totalToDl     int          // 总共需要下载的数量
 	downloaded    int          // 已完成数量
+
+	// 换源队列管理
+	switchQueue []int
+	switchTotal int
+	switched    int
 
 	err       error
 	statusMsg string // 底部状态栏消息
@@ -425,6 +433,8 @@ func (m modelState) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updatePlaylistResult(msg)
 	case stateDownloading:
 		return m.updateDownloading(msg)
+	case stateSwitching:
+		return m.updateSwitching(msg)
 	}
 
 	return m, nil
@@ -598,6 +608,36 @@ func (m modelState) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.spinner.Tick,
 				downloadNextCmd(m.downloadQueue, m.outDir, m.withCover, m.withLyrics),
 			)
+		case "r":
+			if len(m.songs) == 0 || m.cursor < 0 || m.cursor >= len(m.songs) {
+				return m, nil
+			}
+
+			if len(m.selected) == 0 {
+				m.selected[m.cursor] = struct{}{}
+			}
+
+			m.switchQueue = m.switchQueue[:0]
+			for idx := range m.selected {
+				if idx >= 0 && idx < len(m.songs) {
+					m.switchQueue = append(m.switchQueue, idx)
+				}
+			}
+			if len(m.switchQueue) == 0 {
+				return m, nil
+			}
+
+			m.switchTotal = len(m.switchQueue)
+			m.switched = 0
+			m.state = stateSwitching
+			m.statusMsg = fmt.Sprintf("正在换源... 0/%d", m.switchTotal)
+
+			firstIdx := m.switchQueue[0]
+			return m, tea.Batch(
+				m.spinner.Tick,
+				m.progress.SetPercent(0),
+				switchSourceCmd(firstIdx, m.songs[firstIdx]),
+			)
 		}
 	}
 	return m, nil
@@ -607,6 +647,12 @@ func (m modelState) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 type downloadOneFinishedMsg struct {
 	err  error
 	song model.Song
+}
+
+type switchSourceResultMsg struct {
+	index int
+	song  model.Song
+	err   error
 }
 
 func (m modelState) updateDownloading(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -646,6 +692,52 @@ func (m modelState) updateDownloading(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		cmds = append(cmds, downloadNextCmd(m.downloadQueue, m.outDir, m.withCover, m.withLyrics))
 		return m, tea.Batch(cmds...)
+	}
+	return m, nil
+}
+
+// --- 4.5 换源状态逻辑 ---
+func (m modelState) updateSwitching(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+	case progress.FrameMsg:
+		progressModel, cmd := m.progress.Update(msg)
+		m.progress = progressModel.(progress.Model)
+		return m, cmd
+	case switchSourceResultMsg:
+		m.switched++
+		if msg.err == nil && msg.index >= 0 && msg.index < len(m.songs) {
+			m.songs[msg.index] = msg.song
+		}
+
+		pct := float64(m.switched) / float64(m.switchTotal)
+		if m.switched >= m.switchTotal {
+			m.state = stateList
+			m.statusMsg = fmt.Sprintf("换源完成: %d/%d", m.switched, m.switchTotal)
+			m.selected = make(map[int]struct{})
+			m.switchQueue = nil
+			return m, m.progress.SetPercent(1)
+		}
+
+		m.statusMsg = fmt.Sprintf("正在换源... %d/%d", m.switched, m.switchTotal)
+		if len(m.switchQueue) > 0 {
+			m.switchQueue = m.switchQueue[1:]
+		}
+		if len(m.switchQueue) == 0 {
+			m.state = stateList
+			m.statusMsg = fmt.Sprintf("换源完成: %d/%d", m.switched, m.switchTotal)
+			m.selected = make(map[int]struct{})
+			return m, m.progress.SetPercent(1)
+		}
+
+		nextIdx := m.switchQueue[0]
+		return m, tea.Batch(
+			m.progress.SetPercent(pct),
+			switchSourceCmd(nextIdx, m.songs[nextIdx]),
+		)
 	}
 	return m, nil
 }
@@ -870,6 +962,14 @@ func downloadNextCmd(queue []model.Song, outDir string, withCover bool, withLyri
 	}
 }
 
+// 换源命令
+func switchSourceCmd(index int, song model.Song) tea.Cmd {
+	return func() tea.Msg {
+		newSong, err := findBestSwitchSong(song)
+		return switchSourceResultMsg{index: index, song: newSong, err: err}
+	}
+}
+
 // 内部下载实现
 func downloadSongWithCookie(song *model.Song, outDir string, withCover bool, withLyrics bool) error {
 	// 1. 准备目录
@@ -974,6 +1074,259 @@ func downloadSongWithCookie(song *model.Song, outDir string, withCover bool, wit
 	return nil
 }
 
+// --- 换源逻辑（与 Web 相同约束） ---
+type switchCandidate struct {
+	song    model.Song
+	score   float64
+	durDiff int
+}
+
+func findBestSwitchSong(current model.Song) (model.Song, error) {
+	if current.Name == "" {
+		return model.Song{}, fmt.Errorf("缺少歌名")
+	}
+	if current.Source == "" {
+		return model.Song{}, fmt.Errorf("缺少来源")
+	}
+
+	keyword := current.Name
+	if current.Artist != "" {
+		keyword = current.Name + " " + current.Artist
+	}
+
+	sources := core.GetAllSourceNames()
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var candidates []switchCandidate
+
+	for _, src := range sources {
+		if src == "" || src == current.Source {
+			continue
+		}
+		if src == "soda" || src == "fivesing" {
+			continue
+		}
+		fn := getSearchFunc(src)
+		if fn == nil {
+			continue
+		}
+
+		wg.Add(1)
+		go func(s string) {
+			defer wg.Done()
+			res, err := fn(keyword)
+			if (err != nil || len(res) == 0) && current.Artist != "" {
+				res, _ = fn(current.Name)
+			}
+			if len(res) == 0 {
+				return
+			}
+			limit := len(res)
+			if limit > 8 {
+				limit = 8
+			}
+
+			for i := 0; i < limit; i++ {
+				cand := res[i]
+				cand.Source = s
+				score := calcSongSimilarity(current.Name, current.Artist, cand.Name, cand.Artist)
+				if score <= 0 {
+					continue
+				}
+
+				durDiff := 0
+				if current.Duration > 0 && cand.Duration > 0 {
+					durDiff = intAbs(current.Duration - cand.Duration)
+					if !isDurationClose(current.Duration, cand.Duration) {
+						continue
+					}
+				}
+
+				mu.Lock()
+				candidates = append(candidates, switchCandidate{song: cand, score: score, durDiff: durDiff})
+				mu.Unlock()
+			}
+		}(src)
+	}
+
+	wg.Wait()
+	if len(candidates) == 0 {
+		return model.Song{}, fmt.Errorf("未找到可换源结果")
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].score == candidates[j].score {
+			return candidates[i].durDiff < candidates[j].durDiff
+		}
+		return candidates[i].score > candidates[j].score
+	})
+
+	for _, cand := range candidates {
+		if validatePlayable(&cand.song) {
+			return cand.song, nil
+		}
+	}
+
+	return model.Song{}, fmt.Errorf("无可播放的换源结果")
+}
+
+func validatePlayable(song *model.Song) bool {
+	if song == nil || song.ID == "" || song.Source == "" {
+		return false
+	}
+	if song.Source == "soda" || song.Source == "fivesing" {
+		return false
+	}
+
+	fn := getDownloadFunc(song.Source)
+	if fn == nil {
+		return false
+	}
+	urlStr, err := fn(&model.Song{ID: song.ID, Source: song.Source})
+	if err != nil || urlStr == "" {
+		return false
+	}
+
+	req, _ := http.NewRequest("GET", urlStr, nil)
+	req.Header.Set("Range", "bytes=0-1")
+	req.Header.Set("User-Agent", UA_Common)
+	if song.Source == "bilibili" {
+		req.Header.Set("Referer", "https://www.bilibili.com/")
+	}
+	if song.Source == "migu" {
+		req.Header.Set("Referer", "http://music.migu.cn/")
+	}
+	if song.Source == "qq" {
+		req.Header.Set("Referer", "http://y.qq.com")
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode == 200 || resp.StatusCode == 206
+}
+
+func calcSongSimilarity(name, artist, candName, candArtist string) float64 {
+	nameA := normalizeText(name)
+	nameB := normalizeText(candName)
+	if nameA == "" || nameB == "" {
+		return 0
+	}
+	nameSim := similarityScore(nameA, nameB)
+
+	artistA := normalizeText(artist)
+	artistB := normalizeText(candArtist)
+	if artistA == "" || artistB == "" {
+		return nameSim
+	}
+
+	artistSim := similarityScore(artistA, artistB)
+	return nameSim*0.7 + artistSim*0.3
+}
+
+func normalizeText(s string) string {
+	if s == "" {
+		return ""
+	}
+	s = strings.ToLower(s)
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) || unicode.In(r, unicode.Han) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func similarityScore(a, b string) float64 {
+	if a == b {
+		return 1
+	}
+	if a == "" || b == "" {
+		return 0
+	}
+	la := len([]rune(a))
+	lb := len([]rune(b))
+	maxLen := la
+	if lb > maxLen {
+		maxLen = lb
+	}
+	if maxLen == 0 {
+		return 0
+	}
+	dist := levenshteinDistance(a, b)
+	if dist >= maxLen {
+		return 0
+	}
+	return 1 - float64(dist)/float64(maxLen)
+}
+
+func levenshteinDistance(a, b string) int {
+	ra := []rune(a)
+	rb := []rune(b)
+	la := len(ra)
+	lb := len(rb)
+	if la == 0 {
+		return lb
+	}
+	if lb == 0 {
+		return la
+	}
+
+	prev := make([]int, lb+1)
+	cur := make([]int, lb+1)
+	for j := 0; j <= lb; j++ {
+		prev[j] = j
+	}
+	for i := 1; i <= la; i++ {
+		cur[0] = i
+		for j := 1; j <= lb; j++ {
+			cost := 0
+			if ra[i-1] != rb[j-1] {
+				cost = 1
+			}
+			del := prev[j] + 1
+			ins := cur[j-1] + 1
+			sub := prev[j-1] + cost
+			cur[j] = del
+			if ins < cur[j] {
+				cur[j] = ins
+			}
+			if sub < cur[j] {
+				cur[j] = sub
+			}
+		}
+		prev, cur = cur, prev
+	}
+	return prev[lb]
+}
+
+func isDurationClose(a, b int) bool {
+	if a <= 0 || b <= 0 {
+		return true
+	}
+	diff := intAbs(a - b)
+	if diff <= 10 {
+		return true
+	}
+	maxAllowed := int(float64(a) * 0.15)
+	if maxAllowed < 10 {
+		maxAllowed = 10
+	}
+	return diff <= maxAllowed
+}
+
+func intAbs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
 // ... truncate, getSourceDisplay, View, renderTable 保持不变 ...
 func truncate(s string, maxLen int) string {
 	if utf8.RuneCountInString(s) <= maxLen {
@@ -1025,7 +1378,7 @@ func (m modelState) View() string {
 		statusStyle := lipgloss.NewStyle().Foreground(subtleColor)
 		s.WriteString(statusStyle.Render(m.statusMsg))
 		s.WriteString("\n\n")
-		s.WriteString(statusStyle.Render("↑/↓: 移动 • 空格: 选择 • a: 全选/清空 • Enter: 下载 • b: 返回 • q: 退出"))
+		s.WriteString(statusStyle.Render("↑/↓: 移动 • 空格: 选择 • a: 全选/清空 • r: 换源 • Enter: 下载 • b: 返回 • q: 退出"))
 	case statePlaylistResult: // 新增
 		s.WriteString(m.renderPlaylistTable())
 		s.WriteString("\n")
@@ -1042,6 +1395,10 @@ func (m modelState) View() string {
 			s.WriteString(lipgloss.NewStyle().Foreground(yellowColor).Render(fmt.Sprintf("-> %s - %s", current.Artist, current.Name)))
 		}
 		s.WriteString("\n\n" + lipgloss.NewStyle().Foreground(subtleColor).Render(m.statusMsg))
+	case stateSwitching:
+		s.WriteString("\n")
+		s.WriteString(m.progress.View() + "\n\n")
+		s.WriteString(fmt.Sprintf("%s %s\n", m.spinner.View(), m.statusMsg))
 	}
 	return s.String()
 }
