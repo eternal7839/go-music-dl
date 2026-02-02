@@ -226,6 +226,8 @@ func getPlaylistSearchFunc(source string) func(string) ([]model.Playlist, error)
 		return kugou.New(c).SearchPlaylist
 	case "kuwo":
 		return kuwo.New(c).SearchPlaylist
+	case "bilibili":
+		return bilibili.New(c).SearchPlaylist
 	case "soda":
 		return soda.New(c).SearchPlaylist
 	case "fivesing":
@@ -247,6 +249,8 @@ func getPlaylistDetailFunc(source string) func(string) ([]model.Song, error) {
 		return kugou.New(c).GetPlaylistSongs
 	case "kuwo":
 		return kuwo.New(c).GetPlaylistSongs
+	case "bilibili":
+		return bilibili.New(c).GetPlaylistSongs
 	case "soda":
 		return soda.New(c).GetPlaylistSongs
 	case "fivesing":
@@ -268,6 +272,8 @@ func getParsePlaylistFunc(source string) func(string) (*model.Playlist, []model.
 		return kugou.New(c).ParsePlaylist
 	case "kuwo":
 		return kuwo.New(c).ParsePlaylist
+	case "bilibili":
+		return bilibili.New(c).ParsePlaylist
 	case "soda":
 		return soda.New(c).ParsePlaylist
 	case "fivesing":
@@ -1354,7 +1360,12 @@ func (m modelState) View() string {
 	case stateInput:
 		s.WriteString("请输入搜索关键字:\n")
 		s.WriteString(m.textInput.View())
+		modeLabel := "单曲"
+		if m.searchType == "playlist" {
+			modeLabel = "歌单"
+		}
 		s.WriteString(fmt.Sprintf("\n\n(当前源: %v)", getSourceDisplay(m.sources)))
+		s.WriteString(fmt.Sprintf("\n(当前模式: %s搜索)", modeLabel))
 		s.WriteString("\n(按 Enter 搜索/解析, Tab 切换搜歌/歌单, Ctrl+C 退出)")
 		cm.mu.RLock()
 		if len(cm.cookies) > 0 {
