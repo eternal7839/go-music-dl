@@ -1,67 +1,63 @@
 # Go Music DL
 
-Go Music DL 是一个音乐搜索下载工具，支持命令行和网页两种方式。可以搜索下载十多个主流音乐平台的歌曲。
+Go Music DL 是一个音乐搜索与下载工具，带 Web 和 TUI 两种入口。你可以在浏览器试听，也可以在终端里批量下载。
 
-![Web UI](./screenshots/web.png)
-_Web 界面_
+![Web UI 1](./screenshots/web1.png)
+![Web UI 2](./screenshots/web2.png)
 
-![TUI](./screenshots/tui.png)
-_TUI 界面_
+![TUI 1](./screenshots/tui1.png)
+![TUI 2](./screenshots/tui2.png)
 
-## 功能
+## 主要功能
 
-- **双模式**:
-  - **Web 模式**: 启动本地网页服务，在浏览器中搜索、试听、下载，支持歌词
-  - **CLI/TUI 模式**: 命令行搜索，或使用 TUI 界面批量下载
+- Web 与 TUI 双模式
+- 多平台聚合搜索与歌单搜索
+- 试听、歌词、封面下载
+- Range 探测：显示大小与码率
+- 汽水音乐等加密音频解密
+- 过滤需要付费的资源
 
-- **聚合搜索**: 支持网易云、QQ音乐、酷狗等十多个平台
+## 新增改动（简要）
 
-- **歌单功能**: 支持搜索歌单和获取歌单歌曲
+- Web 试听按钮支持播放/停止切换
+- Web 单曲支持“换源”，按相似度优先、时长接近、可播放验证
+- 换源自动排除 soda 与 fivesing
+- TUI 增加 r 键批量换源，并显示换源进度
 
-- **下载**:
-  - 自动命名: `歌手 - 歌名.mp3`
-  - 支持下载封面和歌词
-  - 清理文件名中的非法字符
+## 快速开始
 
-- **在线试听**: Web 模式下有播放器，支持歌词
-
-- **特殊格式**: 支持汽水音乐等平台的加密音频解密
-
-- **免费优先**: 跳过需要 VIP 或付费的歌曲
-
-- **流式转发**: 支持 Range 请求，快速播放
-
-## 开始使用
-
-### 1. 下载
-
-从 [GitHub Releases](https://github.com/guohuiyuan/go-music-dl/releases) 下载最新版本。
-
-### 2. 使用
-
-#### Web 模式
+### Web 模式
 
 ```bash
 ./music-dl web
 ```
 
-自动打开浏览器，访问 `http://localhost:8080`。
+浏览器会自动打开 `http://localhost:8080`。
 
-#### CLI/TUI 模式
+### CLI/TUI 模式
 
 ```bash
-# 搜索 "周杰伦"
+# 搜索
 ./music-dl -k "周杰伦"
 ```
 
-进入 TUI 界面后，用 `↑` `↓` 键选择歌曲，按 `空格` 选中，按 `回车` 下载。
+TUI 常用按键：
 
-**其他用法**:
+- `↑/↓` 移动
+- `空格` 选择
+- `a` 全选/清空
+- `r` 对勾选项换源
+- `Enter` 下载
+- `b` 返回
+- `q` 退出
+
+更多用法：
+
 ```bash
 # 查看帮助
 ./music-dl -h
 
-# 搜索 "周杰伦 晴天"，指定从 QQ 音乐和网易云
+# 指定搜索源
 ./music-dl -k "周杰伦 晴天" -s qq,netease
 
 # 指定下载目录
@@ -70,6 +66,16 @@ _TUI 界面_
 # 下载时包含封面和歌词
 ./music-dl -k "周杰伦" --cover --lyrics
 ```
+
+## Web 换源说明
+
+单曲卡片里的“换源”会在其它平台里找更像的版本：
+
+- 先看歌名/歌手相似度
+- 再看时长差异（太大就跳过）
+- 最后做可播放探测
+
+当前会跳过 soda 与 fivesing。
 
 ## 支持平台
 
@@ -92,7 +98,6 @@ _TUI 界面_
 支持直接解析音乐分享链接：
 
 ```bash
-# 粘贴分享链接
 ./music-dl -k "https://music.163.com/#/song?id=123456"
 ```
 
@@ -100,32 +105,27 @@ _TUI 界面_
 
 ## 常见问题
 
-**Q: 为什么有些歌搜不到或下载失败？**
-A: 可能原因：1) 歌曲需要 VIP 或付费；2) 平台接口变更；3) 网络问题。
+**Q: 有些歌搜不到或下载失败？**
+可能是付费限制、平台接口变更或网络问题。
 
-**Q: Web 模式启动后页面打不开？**
-A: 检查：1) 端口 8080 是否被占用；2) 浏览器插件是否干扰。
+**Q: Web 模式打不开？**
+检查端口是否占用，或浏览器插件是否拦截。
 
 **Q: 如何设置 Cookie 获取更高音质？**
-A: 在 Web 界面的设置中，可以添加各平台的 Cookie。
+Web 右上角“设置”里可添加平台 Cookie。
 
 ## 项目结构
 
 ```
 go-music-dl/
 ├── cmd/
-│   └── music-dl/       # CLI 命令
-│       ├── main.go       # 程序入口
-│       ├── root.go       # 主命令
-│       └── web.go        # Web 命令
-├── core/                 # 核心逻辑
-│   └── service.go       # 搜索、源管理
+│   └── music-dl/
+├── core/
 ├── internal/
-│   ├── cli/              # TUI 界面
-│   └── web/              # Web 服务
-├── downloads/            # 下载目录
-├── screenshots/          # 截图
-├── go.mod
+│   ├── cli/
+│   └── web/
+├── downloads/
+├── screenshots/
 └── README.md
 ```
 
@@ -144,8 +144,8 @@ go-music-dl/
 
 ## 许可证
 
-本项目基于 [CharlesPikachu/musicdl](https://github.com/CharlesPikachu/musicdl) 的核心设计思路开发，遵循 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) 协议，禁止任何商业使用。
+本项目基于 [CharlesPikachu/musicdl](https://github.com/CharlesPikachu/musicdl) 的设计思路开发，遵循 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)。禁止商业使用。
 
 ## 免责声明
 
-本项目仅供个人学习和技术交流使用。请在遵守相关法律法规的前提下使用。通过本工具下载的音乐资源，请于 24 小时内删除。
+仅供学习和技术交流使用。下载的音乐资源请在 24 小时内删除。
