@@ -34,7 +34,7 @@
             background-repeat: no-repeat;
             color: var(--text-main);
             margin: 0;
-            padding: 40px 20px 120px;
+            padding: 40px 20px 150px;
             min-height: 100vh;
             display: flex;
             flex-direction: column;
@@ -148,6 +148,53 @@
         }
 
         /* Results */
+        .list-header {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;
+        }
+        .list-header span { color: var(--text-sub); font-size: 14px; }
+        
+        /* 批量操作样式 */
+        .checkbox-wrapper {
+            display: none; width: 30px; align-items: center; justify-content: center; margin-right: 10px;
+        }
+        body.batch-mode .checkbox-wrapper { display: flex; }
+        body.batch-mode .song-card { padding-left: 10px; }
+        
+        /* 批量操作栏 */
+        .batch-toolbar {
+            display: none;
+            background: #fff;
+            padding: 15px 20px;
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            border: 1px solid #e2e8f0;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+            justify-content: space-between;
+            animation: slideDown 0.3s ease-out;
+        }
+        
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .batch-toolbar.active { display: flex; }
+        
+        .batch-info { font-size: 14px; font-weight: 600; color: var(--text-main); display: flex; align-items: center; }
+        .batch-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        
+        .btn-pill {
+            padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;
+            border: none; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+        }
+        .btn-pill-primary { background: var(--primary-color); color: white; }
+        .btn-pill-primary:hover { background: #5a67d8; transform: translateY(-1px); }
+        .btn-pill-outline { background: transparent; border: 1px solid #cbd5e0; color: var(--text-main); }
+        .btn-pill-outline:hover { border-color: var(--primary-color); color: var(--primary-color); }
+
         .result-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 15px; }
         
         .song-card {
@@ -161,6 +208,7 @@
             border-color: var(--primary-color); background: #eff3ff;
             transform: scale(1.01); box-shadow: 0 8px 20px rgba(102, 126, 234, 0.25);
         }
+        .song-card.selected { border-color: var(--primary-color); background: #f7fafc; }
 
         .cover-wrapper {
             width: 64px; height: 64px; border-radius: 10px; overflow: hidden;
@@ -249,9 +297,13 @@
         }
 
         /* APlayer & Waifu */
-        /* Desktop Style - Keeping this consistent */
+        /* 强制提升 APlayer 层级，确保移动端可控制 */
+        .aplayer.aplayer-fixed {
+            z-index: 10000 !important;
+        }
+
         .aplayer.aplayer-fixed .aplayer-lrc {
-            margin-bottom: 20px; padding-bottom: 20px; text-shadow: none !important;
+            margin-bottom: 40px; padding-bottom: 20px; text-shadow: none !important;
             -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%);
             mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%);
             pointer-events: none !important;
@@ -276,7 +328,7 @@
 
         @media (max-width: 768px) {
             #waifu { display: none; }
-            body { padding: 0 0 100px 0; background-size: 100% 400px; }
+            body { padding: 0 0 200px 0; background-size: 100% 400px; }
             .container { padding: 0; width: 100%; }
             .search-box { 
                 padding: 20px 15px; border-radius: 0 0 20px 20px; margin-bottom: 20px;
@@ -303,16 +355,22 @@
             .btn-circle { width: 34px; height: 34px; font-size: 13px; }
             .settings-float { top: 15px; right: 15px; width: 36px; height: 36px; }
             .modal { width: 85%; max-height: 80vh; padding: 20px; }
-
-            /* ========================================================== */
-            /* 移动端歌词优化：移除黑色阴影，保持与桌面端一致            */
-            /* ========================================================== */
+            
+            /* 移动端歌词位置上移 */
             .aplayer.aplayer-fixed .aplayer-lrc {
-                bottom: 120px !important; /* 位置上移，避免遮挡 */
-                margin-bottom: 0 !important;
-                max-height: 90px !important;
-                text-shadow: none !important; /* 【修改】移除黑色阴影 */
+                bottom: 180px !important; margin-bottom: 0 !important;
+                max-height: 90px !important; text-shadow: none !important;
             }
+            
+            .batch-toolbar { 
+                padding: 12px; 
+                border-radius: 12px;
+                flex-direction: column; 
+                align-items: stretch;
+            }
+            .batch-info { justify-content: center; }
+            .batch-actions { justify-content: space-around; }
+            .btn-pill { flex: 1; justify-content: center; }
         }
     </style>
 </head>
@@ -399,6 +457,28 @@
             {{ end }}
         </div>
     {{ else if .Result }}
+        <div class="list-header">
+            <span>找到 {{ len .Result }} 首歌曲</span>
+            <button type="button" class="ctrl-btn" id="btn-batch-toggle" onclick="toggleBatchMode()">
+                <i class="fa-solid fa-list-check"></i> 批量操作
+            </button>
+        </div>
+
+        <div class="batch-toolbar" id="batch-toolbar">
+            <div class="batch-info">
+                <label><input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this)"> 全选</label>
+                <span style="margin-left: 10px; color: #718096;">已选 <span id="selected-count" style="color: var(--primary-color); font-weight: bold;">0</span> 首</span>
+            </div>
+            <div class="batch-actions">
+                <button class="btn-pill btn-pill-outline" onclick="batchSwitchSource()">
+                    <i class="fa-solid fa-arrows-rotate"></i> 批量换源
+                </button>
+                <button class="btn-pill btn-pill-primary" onclick="batchDownload()">
+                    <i class="fa-solid fa-download"></i> 下载
+                </button>
+            </div>
+        </div>
+
         <ul class="result-list">
             {{ range .Result }}
             <li class="song-card" 
@@ -409,6 +489,10 @@
                 data-artist="{{.Artist}}"
                 data-cover="{{.Cover}}">
                 
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" class="song-checkbox" onclick="event.stopPropagation(); updateBatchToolbar();">
+                </div>
+
                 <div class="cover-wrapper">
                     {{ if .Cover }}
                         <img src="{{ .Cover }}" alt="{{ .Name }}" loading="lazy" onerror="this.src='https://via.placeholder.com/150?text=Music'" >
@@ -866,6 +950,131 @@
         currentPlayingId = clickedId;
         highlightCard(currentPlayingId);
         syncAllPlayButtons();
+    }
+
+    // ================= 批量操作逻辑 =================
+
+    let isBatchMode = false;
+
+    function toggleBatchMode() {
+        isBatchMode = !isBatchMode;
+        document.body.classList.toggle('batch-mode', isBatchMode);
+        const btn = document.getElementById('btn-batch-toggle');
+        
+        if (isBatchMode) {
+            btn.innerHTML = '<i class="fa-solid fa-xmark"></i> 退出批量';
+            btn.style.color = 'var(--error-color)';
+        } else {
+            btn.innerHTML = '<i class="fa-solid fa-list-check"></i> 批量操作';
+            btn.style.color = 'var(--text-sub)';
+            // 退出时清空选择
+            document.querySelectorAll('.song-checkbox').forEach(cb => cb.checked = false);
+            updateBatchToolbar();
+        }
+    }
+
+    function updateBatchToolbar() {
+        const checkedBoxes = document.querySelectorAll('.song-checkbox:checked');
+        const count = checkedBoxes.length;
+        const toolbar = document.getElementById('batch-toolbar');
+        const selectAllCb = document.getElementById('select-all-checkbox');
+        
+        document.getElementById('selected-count').textContent = count;
+        
+        // 更新全选框状态
+        const allBoxes = document.querySelectorAll('.song-checkbox');
+        selectAllCb.checked = allBoxes.length > 0 && allBoxes.length === count;
+
+        // 显示/隐藏底部栏
+        if (count > 0) {
+            toolbar.classList.add('active');
+        } else {
+            toolbar.classList.remove('active');
+        }
+        
+        // 更新高亮样式
+        document.querySelectorAll('.song-card').forEach(card => card.classList.remove('selected'));
+        checkedBoxes.forEach(cb => {
+            cb.closest('.song-card').classList.add('selected');
+        });
+    }
+
+    function toggleSelectAll(mainCb) {
+        const checkboxes = document.querySelectorAll('.song-checkbox');
+        checkboxes.forEach(cb => cb.checked = mainCb.checked);
+        updateBatchToolbar();
+    }
+
+    function getSelectedSongs() {
+        const checkedBoxes = document.querySelectorAll('.song-checkbox:checked');
+        const songs = [];
+        checkedBoxes.forEach(cb => {
+            const card = cb.closest('.song-card');
+            if (card) {
+                const ds = card.dataset;
+                let coverUrl = '';
+                const imgEl = card.querySelector('.cover-wrapper img');
+                if (imgEl) coverUrl = imgEl.src;
+                
+                songs.push({
+                    id: ds.id,
+                    source: ds.source,
+                    name: ds.name,
+                    artist: ds.artist,
+                    url: `/download?id=${encodeURIComponent(ds.id)}&source=${ds.source}&name=${encodeURIComponent(ds.name)}&artist=${encodeURIComponent(ds.artist)}`,
+                    cover: coverUrl,
+                    lrc: `/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
+                    theme: '#667eea',
+                    custom_id: ds.id
+                });
+            }
+        });
+        return songs;
+    }
+
+    function batchDownload() {
+        const songs = getSelectedSongs();
+        if (songs.length === 0) return;
+
+        if (!confirm(`准备下载 ${songs.length} 首歌曲。\n注意：浏览器可能会拦截多个弹窗，请务必允许本站点的弹窗！`)) {
+            return;
+        }
+
+        // 间隔触发下载，避免被浏览器瞬间拦截
+        songs.forEach((s, index) => {
+            setTimeout(() => {
+                const link = document.createElement('a');
+                link.href = s.url;
+                link.download = ''; // 触发下载
+                link.target = '_blank';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }, index * 800); // 800ms 间隔
+        });
+    }
+
+    function batchSwitchSource() {
+        const checkedBoxes = document.querySelectorAll('.song-checkbox:checked');
+        if (checkedBoxes.length === 0) return;
+
+        if (!confirm(`准备对 ${checkedBoxes.length} 首歌曲进行自动换源。\n这可能需要一些时间，请耐心等待。`)) {
+            return;
+        }
+
+        // 间隔触发换源
+        checkedBoxes.forEach((cb, index) => {
+            const card = cb.closest('.song-card');
+            if (card) {
+                const switchBtn = card.querySelector('.btn-switch');
+                if (switchBtn) {
+                    setTimeout(() => {
+                        // 模拟点击换源按钮
+                        switchSource(switchBtn);
+                    }, index * 1000); // 1秒间隔
+                }
+            }
+        });
     }
 </script>
 

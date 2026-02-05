@@ -307,6 +307,9 @@ func detectSource(link string) string {
 	if strings.Contains(link, "qq.com") {
 		return "qq"
 	}
+	if strings.Contains(link, "5sing") {
+		return "fivesing"
+	}
 	if strings.Contains(link, "kugou.com") {
 		return "kugou"
 	}
@@ -321,9 +324,6 @@ func detectSource(link string) string {
 	}
 	if strings.Contains(link, "douyin.com") || strings.Contains(link, "qishui") {
 		return "soda"
-	}
-	if strings.Contains(link, "5sing") {
-		return "fivesing"
 	}
 	if strings.Contains(link, "jamendo.com") {
 		return "jamendo"
