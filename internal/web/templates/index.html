@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="referrer" content="no-referrer">
     <title>Music Hub - 聚合搜索与解析</title>
     <link rel="icon" href="/icon.png" type="image/png">
@@ -21,6 +21,21 @@
             --shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
             --shadow-active: 0 10px 15px -3px rgba(102, 126, 234, 0.2);
             --error-color: #e53e3e;
+            
+            /* 按钮颜色定义 */
+            --btn-switch-bg: #fff7ed;
+            --btn-switch-text: #9a3412;
+            --btn-switch-border: #fed7aa;
+            --btn-switch-hover: #c2410c;
+            
+            --btn-dl-bg: #ebf8ff;
+            --btn-dl-text: #2b6cb0;
+            --btn-dl-border: #bee3f8;
+            --btn-dl-hover: #2c5282;
+
+            --btn-warn-bg: #fff5f5;
+            --btn-warn-text: #c53030;
+            --btn-warn-border: #feb2b2;
         }
 
         body {
@@ -39,6 +54,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .container { width: 100%; max-width: 900px; z-index: 1; }
@@ -167,7 +183,7 @@
             padding: 15px 20px;
             border-radius: 16px;
             box-shadow: var(--shadow);
-            border: 1px solid #e2e8f0;
+            border: 2px solid var(--primary-color);
             margin-bottom: 20px;
             flex-wrap: wrap;
             gap: 15px;
@@ -183,17 +199,27 @@
 
         .batch-toolbar.active { display: flex; }
         
-        .batch-info { font-size: 14px; font-weight: 600; color: var(--text-main); display: flex; align-items: center; }
+        .batch-info { font-size: 14px; font-weight: 600; color: var(--text-main); display: flex; align-items: center; gap: 12px; }
         .batch-actions { display: flex; gap: 10px; flex-wrap: wrap; }
         
         .btn-pill {
-            padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;
-            border: none; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+            padding: 8px 18px; border-radius: 20px; font-size: 14px; font-weight: 600;
+            cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+            border: 1px solid transparent;
         }
+        .btn-pill:disabled { opacity: 0.6; cursor: not-allowed; filter: grayscale(0.8); }
+
         .btn-pill-primary { background: var(--primary-color); color: white; }
         .btn-pill-primary:hover { background: #5a67d8; transform: translateY(-1px); }
-        .btn-pill-outline { background: transparent; border: 1px solid #cbd5e0; color: var(--text-main); }
-        .btn-pill-outline:hover { border-color: var(--primary-color); color: var(--primary-color); }
+        
+        .btn-pill-switch { background: var(--btn-switch-bg); color: var(--btn-switch-text); border-color: var(--btn-switch-border); }
+        .btn-pill-switch:hover:not(:disabled) { border-color: #f97316; background: #fffaf0; }
+
+        .btn-pill-dl { background: var(--btn-dl-bg); color: var(--btn-dl-text); border-color: var(--btn-dl-border); }
+        .btn-pill-dl:hover:not(:disabled) { border-color: #3182ce; background: #ebf8ff; }
+
+        .btn-pill-warn { background: var(--btn-warn-bg); color: var(--btn-warn-text); border-color: var(--btn-warn-border); padding: 4px 12px; font-size: 13px; }
+        .btn-pill-warn:hover { background: #fee2e2; border-color: #f87171; }
 
         .result-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 15px; }
         
@@ -237,7 +263,7 @@
         .btn-play:hover { transform: scale(1.1); }
         .btn-dl { background: #f7fafc; color: var(--text-sub); border: 1px solid #e2e8f0; }
         .btn-dl:hover { border-color: var(--primary-color); color: var(--primary-color); }
-        .btn-switch { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+        .btn-switch { background: var(--btn-switch-bg); color: var(--btn-switch-text); border: 1px solid var(--btn-switch-border); }
         .btn-switch:hover { border-color: #fb923c; color: #c2410c; }
 
         /* Playlist Grid */
@@ -296,12 +322,45 @@
             color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer;
         }
 
+        /* [新增] 回到顶部按钮样式 (桌面端) */
+        .back-to-top {
+            position: fixed;
+            bottom: 120px; /* 默认位置 */
+            right: 140px;  /* [调整] 向左移动，避开 Live2D */
+            width: 45px;
+            height: 45px;
+            background: white;
+            border-radius: 50%;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 200000; /* [调整] 层级高于 Live2D (99999) */
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+            color: var(--primary-color);
+            font-size: 20px;
+        }
+        .back-to-top.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+        .back-to-top:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: translateY(-5px);
+        }
+
         /* APlayer & Waifu */
         /* 强制提升 APlayer 层级，确保移动端可控制 */
         .aplayer.aplayer-fixed {
             z-index: 10000 !important;
         }
 
+        /* 桌面端歌词位置 */
         .aplayer.aplayer-fixed .aplayer-lrc {
             margin-bottom: 40px; padding-bottom: 20px; text-shadow: none !important;
             -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%);
@@ -326,6 +385,7 @@
         }
         #waifu canvas, #waifu-tool, #waifu-tips { pointer-events: auto !important; }
 
+        /* ================= 移动端适配 ================= */
         @media (max-width: 768px) {
             #waifu { display: none; }
             body { padding: 0 0 200px 0; background-size: 100% 400px; }
@@ -356,25 +416,42 @@
             .settings-float { top: 15px; right: 15px; width: 36px; height: 36px; }
             .modal { width: 85%; max-height: 80vh; padding: 20px; }
             
-            /* 移动端歌词位置上移 */
+            /* 移动端歌词位置上移，防止遮挡；样式与 Web 保持一致 */
             .aplayer.aplayer-fixed .aplayer-lrc {
-                bottom: 180px !important; margin-bottom: 0 !important;
-                max-height: 90px !important; text-shadow: none !important;
+                bottom: 180px !important; 
+                margin-bottom: 0 !important;
+                max-height: 150px !important; 
+                text-shadow: none !important; /* 移除移动端特有的阴影，保持一致 */
             }
+            .aplayer .aplayer-lrc p { font-size: 18px !important; }
             
+            /* 移动端批量操作栏布局 */
             .batch-toolbar { 
                 padding: 12px; 
                 border-radius: 12px;
                 flex-direction: column; 
                 align-items: stretch;
             }
-            .batch-info { justify-content: center; }
+            .batch-info { justify-content: center; flex-wrap: wrap;}
             .batch-actions { justify-content: space-around; }
             .btn-pill { flex: 1; justify-content: center; }
+
+            /* [新增] 移动端回到顶部按钮位置微调 */
+            .back-to-top {
+                bottom: 220px; /* 避开歌词和底部操作栏 */
+                right: 20px;
+                width: 40px;
+                height: 40px;
+                font-size: 18px;
+            }
         }
     </style>
 </head>
 <body>
+
+<div id="back-to-top" class="back-to-top" onclick="scrollToTop()">
+    <i class="fa-solid fa-arrow-up"></i>
+</div>
 
 <div class="settings-float" onclick="openCookieModal()" title="Cookie 设置">
     <i class="fa-solid fa-gear"></i>
@@ -402,6 +479,13 @@
             <div class="input-group">
                 <input type="text" name="q" value="{{.Keyword}}" placeholder="搜索歌曲、歌手... 或直接粘贴分享链接" required autocomplete="off">
                 <button type="submit" class="search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
+            </div>
+
+            <div style="text-align: center; margin-bottom: 20px;">
+                <button type="button" class="btn-pill btn-pill-primary" onclick="goToRecommend()" 
+                    style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); border: none; box-shadow: 0 4px 15px rgba(255, 154, 158, 0.4); justify-content:center;">
+                    <i class="fa-solid fa-fire"></i> 获取每日推荐歌单
+                </button>
             </div>
 
             {{ if .Error }}
@@ -466,15 +550,20 @@
 
         <div class="batch-toolbar" id="batch-toolbar">
             <div class="batch-info">
-                <label><input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this)"> 全选</label>
-                <span style="margin-left: 10px; color: #718096;">已选 <span id="selected-count" style="color: var(--primary-color); font-weight: bold;">0</span> 首</span>
+                <div>
+                    <label><input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this)"> 全选</label>
+                    <span style="margin-left: 5px; color: #718096; font-size:12px;">已选 <span id="selected-count" style="color: var(--primary-color); font-weight: bold;">0</span></span>
+                </div>
+                <button class="btn-pill btn-pill-warn" onclick="selectInvalidSongs()">
+                    <i class="fa-solid fa-triangle-exclamation"></i> 选择无效
+                </button>
             </div>
             <div class="batch-actions">
-                <button class="btn-pill btn-pill-outline" onclick="batchSwitchSource()">
+                <button class="btn-pill btn-pill-switch" id="btn-batch-switch" onclick="batchSwitchSource()" disabled>
                     <i class="fa-solid fa-arrows-rotate"></i> 批量换源
                 </button>
-                <button class="btn-pill btn-pill-primary" onclick="batchDownload()">
-                    <i class="fa-solid fa-download"></i> 下载
+                <button class="btn-pill btn-pill-dl" id="btn-batch-dl" onclick="batchDownload()" disabled>
+                    <i class="fa-solid fa-download"></i> 批量下载
                 </button>
             </div>
         </div>
@@ -633,6 +722,23 @@
         });
     }
 
+    // 跳转到每日推荐
+    function goToRecommend() {
+        const supported = ['netease', 'qq', 'kugou', 'kuwo'];
+        const selected = [];
+        document.querySelectorAll('.source-checkbox:checked').forEach(cb => {
+            if (supported.includes(cb.value)) {
+                selected.push(cb.value);
+            }
+        });
+        
+        if (selected.length === 0) {
+            window.location.href = '/recommend?sources=' + supported.join('&sources=');
+        } else {
+            window.location.href = '/recommend?sources=' + selected.join('&sources=');
+        }
+    }
+
     function inspectSong(card) {
         const id = card.dataset.id;
         const source = card.dataset.source;
@@ -646,7 +752,7 @@
 
                 if (data.valid) {
                     sizeTag.textContent = data.size;
-                    sizeTag.className = "tag";
+                    sizeTag.className = "tag tag-success"; // 有效时添加绿色类
                     bitrateTag.textContent = data.bitrate;
                     bitrateTag.className = "tag";
                 } else {
@@ -687,6 +793,20 @@
         });
     }
 
+    // 回到顶部功能
+    window.addEventListener('scroll', () => {
+        const btn = document.getElementById('back-to-top');
+        if (window.scrollY > 300) {
+            btn.classList.add('show');
+        } else {
+            btn.classList.remove('show');
+        }
+    });
+
+    function scrollToTop() {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
     // APlayer Config
     const ap = new APlayer({
         container: document.getElementById('aplayer'),
@@ -702,7 +822,6 @@
         audio: []
     });
 
-    // 当前正在播放（或最近一次被切换到）的歌曲 ID，用于按钮图标/点击切换
     let currentPlayingId = null;
 
     ap.on('listswitch', (e) => {
@@ -716,7 +835,6 @@
     });
 
     ap.on('play', () => {
-        // 尽量从当前列表项里拿到 custom_id
         const idx = ap?.list?.index;
         const audio = (typeof idx === 'number') ? ap.list.audios[idx] : null;
         if (audio && audio.custom_id) {
@@ -727,12 +845,10 @@
     });
 
     ap.on('pause', () => {
-        // 仅更新按钮图标；高亮保留由用户决定
         syncAllPlayButtons();
     });
 
     ap.on('ended', () => {
-        // 播放结束时恢复按钮图标
         currentPlayingId = null;
         highlightCard(null);
         syncAllPlayButtons();
@@ -752,7 +868,6 @@
         const icon = btn ? btn.querySelector('i') : null;
         if (!btn || !icon) return;
 
-        // 播放中显示“停止”图标；停止/暂停显示“播放”图标
         icon.classList.remove('fa-play', 'fa-stop');
         icon.classList.add(isPlaying ? 'fa-stop' : 'fa-play');
         btn.title = isPlaying ? '停止' : '播放';
@@ -776,9 +891,8 @@
     }
 
     function updateCardWithSong(card, song) {
-        const oldId = card.dataset.id;
+        const oldId = card.dataset.id; // [关键] 保存旧ID，用于查找播放器中的歌曲
 
-        // data-* 更新
         card.dataset.id = song.id;
         card.dataset.source = song.source;
         card.dataset.duration = song.duration || 0;
@@ -786,7 +900,6 @@
         card.dataset.artist = song.artist || card.dataset.artist;
         card.dataset.cover = song.cover || '';
 
-        // 标题/作者/专辑
         const titleEl = card.querySelector('.song-info h3');
         if (titleEl) titleEl.textContent = song.name || '';
 
@@ -796,17 +909,14 @@
             artistLine.innerHTML = `<i class="fa-regular fa-user" style="font-size:11px;"></i> ${song.artist || ''}${albumText}`;
         }
 
-        // 源标签
         const sourceTag = card.querySelector('.tag-src');
         if (sourceTag) sourceTag.textContent = song.source;
 
-        // 时长标签
         const tags = card.querySelectorAll('.tags .tag');
         if (tags && tags.length >= 2) {
             tags[1].textContent = formatDuration(song.duration);
         }
 
-        // 封面
         const coverWrap = card.querySelector('.cover-wrapper');
         if (coverWrap) {
             let imgEl = coverWrap.querySelector('img');
@@ -819,7 +929,6 @@
             imgEl.alt = song.name || '';
         }
 
-        // 下载/歌词/封面链接 & id
         const dl = card.querySelector('.btn-download');
         if (dl) {
             dl.href = `/download?id=${encodeURIComponent(song.id)}&source=${song.source}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
@@ -842,7 +951,6 @@
             }
         }
 
-        // size/bitrate 标签重置为 loading
         const sizeTag = card.querySelector('[id^="size-"]');
         if (sizeTag) {
             sizeTag.id = `size-${song.id}`;
@@ -856,14 +964,43 @@
             bitrateTag.innerHTML = '<i class="fa fa-circle-notch fa-spin"></i>';
         }
 
-        // 如果之前的 id 参与了播放高亮，复位后再同步一次
         if (currentPlayingId === oldId) {
             currentPlayingId = song.id;
         }
         syncAllPlayButtons();
 
-        // 重新触发检测
         inspectSong(card);
+
+        // [新增] 换源后自动更新播放器列表中的对应歌曲 (传入旧ID)
+        syncSongToAPlayer(oldId, song);
+    }
+
+    // [新增] 同步单曲信息到 APlayer 列表
+    function syncSongToAPlayer(oldId, newSong) {
+        if (!ap || !ap.list || !ap.list.audios) return;
+        
+        // 查找播放列表中 custom_id 匹配的歌曲 (使用旧ID查找)
+        const index = ap.list.audios.findIndex(a => a.custom_id === oldId);
+        
+        if (index !== -1) {
+            // 更新元数据
+            const audio = ap.list.audios[index];
+            audio.name = newSong.name;
+            audio.artist = newSong.artist;
+            audio.cover = newSong.cover;
+            audio.url = `/download?id=${encodeURIComponent(newSong.id)}&source=${newSong.source}&name=${encodeURIComponent(newSong.name)}&artist=${encodeURIComponent(newSong.artist)}`;
+            audio.lrc = `/lyric?id=${encodeURIComponent(newSong.id)}&source=${newSong.source}`;
+            audio.custom_id = newSong.id; // 更新为新ID
+            
+            // 如果这首歌当前正在播放，强制重新加载
+            if (ap.list.index === index) {
+                // 利用 switch 切换到自己，触发重新加载 audio 源
+                ap.list.switch(index); 
+                if (ap.audio.paused) {
+                    ap.play();
+                }
+            }
+        }
     }
 
     function switchSource(btn) {
@@ -884,15 +1021,8 @@
         fetch(url)
             .then(r => r.ok ? r.json() : Promise.reject())
             .then(song => {
-                const oldId = ds.id;
-                const wasPlaying = currentPlayingId && currentPlayingId === oldId && ap?.audio && !ap.audio.paused;
-
+                // 在 UI 更新函数内部会自动处理播放器同步
                 updateCardWithSong(card, song);
-
-                if (wasPlaying) {
-                    const playBtn = card.querySelector('.btn-play');
-                    if (playBtn) playAllAndJumpTo(playBtn);
-                }
             })
             .catch(() => {
                 alert('换源失败，请稍后重试');
@@ -913,7 +1043,6 @@
         const clickedId = currentCard.dataset.id;
         const isActuallyPlaying = ap?.audio && !ap.audio.paused;
 
-        // 再次点击同一首：停止播放（并复位到开头）
         if (currentPlayingId && currentPlayingId === clickedId && isActuallyPlaying) {
             ap.pause();
             try { ap.seek(0); } catch (e) {}
@@ -956,17 +1085,21 @@
 
     let isBatchMode = false;
 
+    // 点击按钮即激活模式，无需先勾选
     function toggleBatchMode() {
         isBatchMode = !isBatchMode;
         document.body.classList.toggle('batch-mode', isBatchMode);
         const btn = document.getElementById('btn-batch-toggle');
+        const toolbar = document.getElementById('batch-toolbar');
         
         if (isBatchMode) {
             btn.innerHTML = '<i class="fa-solid fa-xmark"></i> 退出批量';
             btn.style.color = 'var(--error-color)';
+            toolbar.classList.add('active'); // 立即显示
         } else {
             btn.innerHTML = '<i class="fa-solid fa-list-check"></i> 批量操作';
             btn.style.color = 'var(--text-sub)';
+            toolbar.classList.remove('active');
             // 退出时清空选择
             document.querySelectorAll('.song-checkbox').forEach(cb => cb.checked = false);
             updateBatchToolbar();
@@ -976,20 +1109,25 @@
     function updateBatchToolbar() {
         const checkedBoxes = document.querySelectorAll('.song-checkbox:checked');
         const count = checkedBoxes.length;
-        const toolbar = document.getElementById('batch-toolbar');
         const selectAllCb = document.getElementById('select-all-checkbox');
+        const batchSwitch = document.getElementById('btn-batch-switch');
+        const batchDl = document.getElementById('btn-batch-dl');
         
         document.getElementById('selected-count').textContent = count;
         
         // 更新全选框状态
         const allBoxes = document.querySelectorAll('.song-checkbox');
-        selectAllCb.checked = allBoxes.length > 0 && allBoxes.length === count;
+        if (allBoxes.length > 0) {
+            selectAllCb.checked = (allBoxes.length === count);
+        }
 
-        // 显示/隐藏底部栏
+        // 根据是否选中来禁用/启用操作按钮
         if (count > 0) {
-            toolbar.classList.add('active');
+            batchSwitch.disabled = false;
+            batchDl.disabled = false;
         } else {
-            toolbar.classList.remove('active');
+            batchSwitch.disabled = true;
+            batchDl.disabled = true;
         }
         
         // 更新高亮样式
@@ -1002,6 +1140,32 @@
     function toggleSelectAll(mainCb) {
         const checkboxes = document.querySelectorAll('.song-checkbox');
         checkboxes.forEach(cb => cb.checked = mainCb.checked);
+        updateBatchToolbar();
+    }
+
+    // 选择无效歌曲 (包含提示)
+    function selectInvalidSongs() {
+        const invalidTags = document.querySelectorAll('.tag-fail');
+        if (invalidTags.length === 0) {
+            alert('当前列表中没有检测到无效歌曲');
+            return;
+        }
+        
+        let count = 0;
+        invalidTags.forEach(tag => {
+            const card = tag.closest('.song-card');
+            if (card) {
+                const cb = card.querySelector('.song-checkbox');
+                if (cb && !cb.checked) {
+                    cb.checked = true;
+                    count++;
+                }
+            }
+        });
+        
+        if (count === 0) {
+            alert('无效歌曲已全部选中');
+        }
         updateBatchToolbar();
     }
 
@@ -1040,17 +1204,17 @@
             return;
         }
 
-        // 间隔触发下载，避免被浏览器瞬间拦截
+        // 间隔触发下载
         songs.forEach((s, index) => {
             setTimeout(() => {
                 const link = document.createElement('a');
                 link.href = s.url;
-                link.download = ''; // 触发下载
+                link.download = ''; 
                 link.target = '_blank';
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
-            }, index * 800); // 800ms 间隔
+            }, index * 800); 
         });
     }
 
@@ -1069,9 +1233,8 @@
                 const switchBtn = card.querySelector('.btn-switch');
                 if (switchBtn) {
                     setTimeout(() => {
-                        // 模拟点击换源按钮
                         switchSource(switchBtn);
-                    }, index * 1000); // 1秒间隔
+                    }, index * 1000); 
                 }
             }
         });

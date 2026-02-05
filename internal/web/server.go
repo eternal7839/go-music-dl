@@ -145,7 +145,7 @@ func getSearchFunc(source string) func(string) ([]model.Song, error) {
 	}
 }
 
-// [新增] 歌单搜索工厂
+// 歌单搜索工厂
 func getPlaylistSearchFunc(source string) func(string) ([]model.Playlist, error) {
 	c := cm.Get(source)
 	switch source {
@@ -168,7 +168,7 @@ func getPlaylistSearchFunc(source string) func(string) ([]model.Playlist, error)
 	}
 }
 
-// [新增] 歌单详情工厂
+// 歌单详情工厂
 func getPlaylistDetailFunc(source string) func(string) ([]model.Song, error) {
 	c := cm.Get(source)
 	switch source {
@@ -186,6 +186,24 @@ func getPlaylistDetailFunc(source string) func(string) ([]model.Song, error) {
 		return soda.New(c).GetPlaylistSongs
 	case "fivesing":
 		return fivesing.New(c).GetPlaylistSongs
+	default:
+		return nil
+	}
+}
+
+// [修改] 推荐歌单工厂 (仅支持 qq, netease, kuwo, kugou)
+func getRecommendFunc(source string) func() ([]model.Playlist, error) {
+	c := cm.Get(source)
+	switch source {
+	case "netease":
+		return netease.New(c).GetRecommendedPlaylists
+	case "qq":
+		return qq.New(c).GetRecommendedPlaylists
+	case "kugou":
+		return kugou.New(c).GetRecommendedPlaylists
+	case "kuwo":
+		return kuwo.New(c).GetRecommendedPlaylists
+	// 其他源暂不开启每日推荐
 	default:
 		return nil
 	}
@@ -277,7 +295,7 @@ func getParseFunc(source string) func(string) (*model.Song, error) {
 	}
 }
 
-// [新增] 歌单解析工厂
+// 歌单解析工厂
 func getParsePlaylistFunc(source string) func(string) (*model.Playlist, []model.Song, error) {
 	c := cm.Get(source)
 	switch source {
@@ -355,6 +373,41 @@ func Start(port string) {
 
 	r.GET("/", func(c *gin.Context) {
 		renderIndex(c, nil, nil, "", nil, "", "song")
+	})
+
+	// [新增] 每日推荐路由
+	r.GET("/recommend", func(c *gin.Context) {
+		sources := c.QueryArray("sources")
+		// 如果未指定源，使用默认支持推荐的源
+		if len(sources) == 0 {
+			sources = []string{"netease", "qq", "kugou", "kuwo"}
+		}
+
+		var allPlaylists []model.Playlist
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+
+		for _, src := range sources {
+			fn := getRecommendFunc(src)
+			// 如果源不支持（getRecommendFunc 返回 nil），则跳过
+			if fn == nil {
+				continue
+			}
+			wg.Add(1)
+			go func(s string) {
+				defer wg.Done()
+				res, err := fn()
+				if err == nil && len(res) > 0 {
+					mu.Lock()
+					allPlaylists = append(allPlaylists, res...)
+					mu.Unlock()
+				}
+			}(src)
+		}
+		wg.Wait()
+
+		// 渲染结果，使用 playlist 模式
+		renderIndex(c, nil, allPlaylists, "🔥 每日推荐", sources, "", "playlist")
 	})
 
 	// Search (Song & Playlist)
@@ -461,7 +514,7 @@ func Start(port string) {
 		renderIndex(c, allSongs, allPlaylists, keyword, sources, errorMsg, searchType)
 	})
 
-	// [新增] 获取歌单详情并渲染
+	// 获取歌单详情并渲染
 	r.GET("/playlist", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
