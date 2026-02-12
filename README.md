@@ -36,6 +36,22 @@ Go Music DL 是一个音乐搜索与下载工具，带 Web 和 TUI 两种入口�
 
 浏览器会自动打开 `http://localhost:8080`。
 
+### Docker 模式
+
+```bash
+# 构建镜像
+docker build -t go-music-dl .
+
+# 运行 Web 模式
+docker run -p 8080:8080 -v $(pwd)/downloads:/home/appuser/downloads go-music-dl
+```
+
+浏览器会自动打开 `http://localhost:8080`。
+
+**说明：**
+- downloads目录会挂载到容器内，便于下载文件持久化
+- 如需修改端口，使用 `-p 新端口:8080`
+
 ### CLI/TUI 模式
 
 ```bash
