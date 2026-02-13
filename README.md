@@ -68,6 +68,42 @@ docker run -p 8080:8080 -v $(pwd)/downloads:/home/appuser/downloads go-music-dl
 - downloads目录会挂载到容器内，便于下载文件持久化
 - 如需修改端口，使用 `-p 新端口:8080`
 
+#### Docker Compose 模式
+
+创建 `docker-compose.yml` 文件：
+
+```yaml
+version: '3.8'
+services:
+  go-music-dl:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./downloads:/home/appuser/downloads
+    restart: unless-stopped
+```
+
+运行：
+
+```bash
+# 构建并启动
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+
+# 停止
+docker-compose down
+```
+
+浏览器访问 `http://localhost:8080`。
+
+**说明：**
+- 自动构建镜像并管理容器
+- 支持后台运行和自动重启
+- 可轻松添加 Nginx 等反向代理服务
+
 ### CLI/TUI 模式
 
 ```bash
