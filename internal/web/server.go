@@ -46,6 +46,9 @@ const (
 	Ref_Bilibili = "https://www.bilibili.com/"
 	Ref_Migu     = "http://music.migu.cn/"
 	CookieFile   = "cookies.json"
+
+	// Route prefix for reverse proxy support
+	RoutePrefix = "/music"
 )
 
 // --- Cookie 管理 ---
@@ -359,10 +362,14 @@ func Start(port string) {
 	tmpl := template.Must(template.New("").ParseFS(templateFS, "templates/*.html"))
 	r.SetHTMLTemplate(tmpl)
 
-	r.GET("/icon.png", func(c *gin.Context) { c.FileFromFS("templates/icon.png", http.FS(templateFS)) })
+	// Create route group for prefix support
+	api := r.Group(RoutePrefix)
 
-	r.GET("/cookies", func(c *gin.Context) { c.JSON(200, cm.cookies) })
-	r.POST("/cookies", func(c *gin.Context) {
+	// Static resources
+	api.GET("/icon.png", func(c *gin.Context) { c.FileFromFS("templates/icon.png", http.FS(templateFS)) })
+
+	api.GET("/cookies", func(c *gin.Context) { c.JSON(200, cm.cookies) })
+	api.POST("/cookies", func(c *gin.Context) {
 		var req map[string]string
 		if c.ShouldBindJSON(&req) == nil {
 			cm.SetAll(req)
@@ -371,14 +378,14 @@ func Start(port string) {
 		}
 	})
 
-	r.GET("/", func(c *gin.Context) {
+	api.GET("/", func(c *gin.Context) {
 		renderIndex(c, nil, nil, "", nil, "", "song")
 	})
 
-	// [新增] 每日推荐路由
-	r.GET("/recommend", func(c *gin.Context) {
+	// Daily recommendations
+	api.GET("/recommend", func(c *gin.Context) {
 		sources := c.QueryArray("sources")
-		// 如果未指定源，使用默认支持推荐的源
+		// If no sources specified, use default supported sources
 		if len(sources) == 0 {
 			sources = []string{"netease", "qq", "kugou", "kuwo"}
 		}
@@ -389,7 +396,7 @@ func Start(port string) {
 
 		for _, src := range sources {
 			fn := getRecommendFunc(src)
-			// 如果源不支持（getRecommendFunc 返回 nil），则跳过
+			// Skip if source doesn't support recommendations
 			if fn == nil {
 				continue
 			}
@@ -406,20 +413,20 @@ func Start(port string) {
 		}
 		wg.Wait()
 
-		// 渲染结果，使用 playlist 模式
+		// Render results in playlist mode
 		renderIndex(c, nil, allPlaylists, "🔥 每日推荐", sources, "", "playlist")
 	})
 
 	// Search (Song & Playlist)
-	r.GET("/search", func(c *gin.Context) {
+	api.GET("/search", func(c *gin.Context) {
 		keyword := strings.TrimSpace(c.Query("q"))
 		searchType := c.DefaultQuery("type", "song") // song or playlist
 		sources := c.QueryArray("sources")
 
-		// 默认源逻辑
+		// Default sources logic
 		if len(sources) == 0 {
 			if searchType == "playlist" {
-				sources = core.GetPlaylistSourceNames() // 仅返回支持歌单的源
+				sources = core.GetPlaylistSourceNames() // Only sources that support playlists
 			} else {
 				sources = core.GetDefaultSourceNames()
 			}
@@ -429,7 +436,7 @@ func Start(port string) {
 		var allPlaylists []model.Playlist
 		var errorMsg string
 
-		// 1. 链接解析模式 (支持单曲和歌单)
+		// 1. Link parsing mode (supports single songs and playlists)
 		if strings.HasPrefix(keyword, "http") {
 			src := detectSource(keyword)
 			if src == "" {
@@ -437,26 +444,26 @@ func Start(port string) {
 			} else {
 				parsed := false
 
-				// 优先尝试单曲解析
+				// Try single song parsing first
 				parseFn := getParseFunc(src)
 				if parseFn != nil {
 					if song, err := parseFn(keyword); err == nil {
 						allSongs = append(allSongs, *song)
-						searchType = "song" // 必须切换为单曲模式才能展示
+						searchType = "song" // Must switch to song mode to display
 						parsed = true
 					}
 				}
 
-				// 如果单曲失败，尝试歌单解析
+				// If single song fails, try playlist parsing
 				if !parsed {
 					parsePlaylistFn := getParsePlaylistFunc(src)
 					if parsePlaylistFn != nil {
 						if playlist, songs, err := parsePlaylistFn(keyword); err == nil {
 							if searchType == "playlist" {
-								// 如果用户是在搜歌单，展示歌单卡片Result
+								// If user is searching playlists, show playlist card
 								allPlaylists = append(allPlaylists, *playlist)
 							} else {
-								// 否则直接展示歌单内歌曲列表
+								// Otherwise directly show playlist songs
 								allSongs = append(allSongs, songs...)
 								searchType = "song"
 							}
@@ -469,9 +476,9 @@ func Start(port string) {
 					errorMsg = fmt.Sprintf("解析失败: 暂不支持 %s 平台的此链接类型或解析出错", src)
 				}
 			}
-			// 避免进入下方关键词搜索
+			// Skip keyword search below
 		} else {
-			// 2. 关键词搜索模式
+			// 2. Keyword search mode
 			var wg sync.WaitGroup
 			var mu sync.Mutex
 
@@ -481,7 +488,7 @@ func Start(port string) {
 					defer wg.Done()
 
 					if searchType == "playlist" {
-						// 歌单搜索
+						// Playlist search
 						fn := getPlaylistSearchFunc(s)
 						if fn != nil {
 							res, err := fn(keyword)
@@ -492,7 +499,7 @@ func Start(port string) {
 							}
 						}
 					} else {
-						// 单曲搜索
+						// Single song search
 						fn := getSearchFunc(s)
 						if fn != nil {
 							res, err := fn(keyword)
@@ -514,8 +521,8 @@ func Start(port string) {
 		renderIndex(c, allSongs, allPlaylists, keyword, sources, errorMsg, searchType)
 	})
 
-	// 获取歌单详情并渲染
-	r.GET("/playlist", func(c *gin.Context) {
+	// Get playlist details and render
+	api.GET("/playlist", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
 		if id == "" || src == "" {
@@ -535,12 +542,12 @@ func Start(port string) {
 			errMsg = fmt.Sprintf("获取歌单失败: %v", err)
 		}
 
-		// 渲染为单曲列表模式，但保留上下文
+		// Render as song list mode, but retain context
 		renderIndex(c, songs, nil, "", []string{src}, errMsg, "song")
 	})
 
 	// Inspect
-	r.GET("/inspect", func(c *gin.Context) {
+	api.GET("/inspect", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
 		durStr := c.Query("duration")
@@ -613,7 +620,7 @@ func Start(port string) {
 	})
 
 	// Switch Source (find best match across sources)
-	r.GET("/switch_source", func(c *gin.Context) {
+	api.GET("/switch_source", func(c *gin.Context) {
 		name := strings.TrimSpace(c.Query("name"))
 		artist := strings.TrimSpace(c.Query("artist"))
 		current := strings.TrimSpace(c.Query("source"))
@@ -741,8 +748,8 @@ func Start(port string) {
 		})
 	})
 
-	// Download Logic (Same as before)
-	r.GET("/download", func(c *gin.Context) {
+	// Download Logic
+	api.GET("/download", func(c *gin.Context) {
 		id := c.Query("id")
 		source := c.Query("source")
 		name := c.Query("name")
@@ -829,7 +836,7 @@ func Start(port string) {
 		io.Copy(c.Writer, resp.Body)
 	})
 
-	r.GET("/download_lrc", func(c *gin.Context) {
+	api.GET("/download_lrc", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
 		name := c.Query("name")
@@ -852,7 +859,7 @@ func Start(port string) {
 		c.String(200, lrc)
 	})
 
-	r.GET("/download_cover", func(c *gin.Context) {
+	api.GET("/download_cover", func(c *gin.Context) {
 		u := c.Query("url")
 		if u == "" {
 			return
@@ -865,7 +872,7 @@ func Start(port string) {
 		}
 	})
 
-	r.GET("/lyric", func(c *gin.Context) {
+	api.GET("/lyric", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
 		fn := getLyricFunc(src)
@@ -879,7 +886,7 @@ func Start(port string) {
 		c.String(200, "[00:00.00] 暂无歌词")
 	})
 
-	urlStr := "http://localhost:" + port
+	urlStr := "http://localhost:" + port + RoutePrefix
 	fmt.Printf("Web started at %s\n", urlStr)
 	go func() { time.Sleep(500 * time.Millisecond); openBrowser(urlStr) }()
 	r.Run(":" + port)
@@ -909,6 +916,7 @@ func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist,
 		"Error":              errMsg,
 		"SearchType":         searchType,
 		"PlaylistSupported":  playlistSupported,
+		"Root":               RoutePrefix,
 	})
 }
 

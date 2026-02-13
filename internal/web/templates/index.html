@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="referrer" content="no-referrer">
     <title>Music Hub - 聚合搜索与解析</title>
-    <link rel="icon" href="/icon.png" type="image/png">
+    <link rel="icon" href="{{.Root}}/icon.png" type="image/png">
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/aplayer/dist/APlayer.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6/css/all.min.css">
@@ -489,7 +489,7 @@
 <div class="container">
     <div class="search-box">
         <h1>🎵 Music Hub</h1>
-        <form action="/search" method="get" id="search-form">
+        <form action="{{.Root}}/search" method="get" id="search-form">
             <div class="search-type-switch">
                 <label class="type-option">
                     <input type="radio" name="type" value="song" 
@@ -556,7 +556,7 @@
     {{ if .Playlists }}
         <div class="playlist-grid-container">
             {{ range .Playlists }}
-            <a href="/playlist?id={{.ID}}&source={{.Source}}" class="playlist-card">
+            <a href="{{$.Root}}/playlist?id={{.ID}}&source={{.Source}}" class="playlist-card">
                 <div class="playlist-cover">
                     <img src="{{ .Cover }}" loading="lazy" onerror="this.src='https://via.placeholder.com/150?text=Playlist'">
                     <span class="tag tag-src" style="position:absolute; top:5px; right:5px; margin:0;">{{ .Source }}</span>
@@ -644,17 +644,17 @@
                         <i class="fa-solid fa-arrows-rotate"></i>
                     </button>
                     
-                    <a href="/download?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}" 
+                    <a href="{{$.Root}}/download?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}" 
                        id="dl-{{.ID}}" class="btn-circle btn-dl btn-download" title="下载歌曲" target="_blank">
                         <i class="fa-solid fa-download"></i>
                     </a>
 
-                    <a href="/download_lrc?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}" 
+                    <a href="{{$.Root}}/download_lrc?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}" 
                        id="lrc-{{.ID}}" class="btn-circle btn-dl btn-lyric" title="下载歌词" target="_blank">
                         <i class="fa-solid fa-file-lines"></i>
                     </a>
 
-                    <a href="/download_cover?url={{ .Cover }}&name={{ .Name }}&artist={{ .Artist }}" 
+                    <a href="{{$.Root}}/download_cover?url={{ .Cover }}&name={{ .Name }}&artist={{ .Artist }}" 
                        class="btn-circle btn-dl btn-cover" title="下载封面" target="_blank"
                               style="display:none;">
                         <i class="fa-regular fa-image"></i>
@@ -695,6 +695,8 @@
 <script src="https://fastly.jsdelivr.net/gh/stevenjoezhang/live2d-widget@latest/autoload.js"></script>
 
 <script>
+    // Define global API Root variable
+    const API_ROOT = "{{.Root}}";
     document.addEventListener('DOMContentLoaded', function() {
         const checkboxes = document.querySelectorAll('.source-checkbox');
         
@@ -762,9 +764,9 @@
         });
         
         if (selected.length === 0) {
-            window.location.href = '/recommend?sources=' + supported.join('&sources=');
+            window.location.href = API_ROOT + '/recommend?sources=' + supported.join('&sources=');
         } else {
-            window.location.href = '/recommend?sources=' + selected.join('&sources=');
+            window.location.href = API_ROOT + '/recommend?sources=' + selected.join('&sources=');
         }
     }
 
@@ -773,7 +775,7 @@
         const source = card.dataset.source;
         const duration = card.dataset.duration;
 
-        fetch(`/inspect?id=${encodeURIComponent(id)}&source=${source}&duration=${duration}`)
+        fetch(`${API_ROOT}/inspect?id=${encodeURIComponent(id)}&source=${source}&duration=${duration}`)
             .then(r => r.json())
             .then(data => {
                 const sizeTag = document.getElementById(`size-${id}`);
@@ -800,7 +802,8 @@
     // Cookie Logic
     function openCookieModal() {
         document.getElementById('cookieModal').style.display = 'flex';
-        fetch('/cookies').then(r => r.json()).then(data => {
+        // [修改] fetch URL
+        fetch(API_ROOT + '/cookies').then(r => r.json()).then(data => {
             for (const [k, v] of Object.entries(data)) {
                 const el = document.getElementById(`cookie-${k}`);
                 if(el) el.value = v;
@@ -813,7 +816,8 @@
         document.querySelectorAll('input[id^="cookie-"]').forEach(input => {
             if (input.value) data[input.id.replace('cookie-', '')] = input.value;
         });
-        fetch('/cookies', {
+        // [修改] fetch URL
+        fetch(API_ROOT + '/cookies', {
             method: 'POST', 
             body: JSON.stringify(data)
         }).then(() => {
@@ -960,13 +964,13 @@
 
         const dl = card.querySelector('.btn-download');
         if (dl) {
-            dl.href = `/download?id=${encodeURIComponent(song.id)}&source=${song.source}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
+            dl.href = `${API_ROOT}/download?id=${encodeURIComponent(song.id)}&source=${song.source}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
             dl.id = `dl-${song.id}`;
         }
 
         const lrc = card.querySelector('.btn-lyric');
         if (lrc) {
-            lrc.href = `/download_lrc?id=${encodeURIComponent(song.id)}&source=${song.source}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
+            lrc.href = `${API_ROOT}/download_lrc?id=${encodeURIComponent(song.id)}&source=${song.source}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
             lrc.id = `lrc-${song.id}`;
         }
 
@@ -974,7 +978,7 @@
         if (coverBtn) {
             if (song.cover) {
                 coverBtn.style.display = '';
-                coverBtn.href = `/download_cover?url=${encodeURIComponent(song.cover)}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
+                coverBtn.href = `${API_ROOT}/download_cover?url=${encodeURIComponent(song.cover)}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
             } else {
                 coverBtn.style.display = 'none';
             }
@@ -1017,8 +1021,8 @@
             audio.name = newSong.name;
             audio.artist = newSong.artist;
             audio.cover = newSong.cover;
-            audio.url = `/download?id=${encodeURIComponent(newSong.id)}&source=${newSong.source}&name=${encodeURIComponent(newSong.name)}&artist=${encodeURIComponent(newSong.artist)}`;
-            audio.lrc = `/lyric?id=${encodeURIComponent(newSong.id)}&source=${newSong.source}`;
+            audio.url = `${API_ROOT}/download?id=${encodeURIComponent(newSong.id)}&source=${newSong.source}&name=${encodeURIComponent(newSong.name)}&artist=${encodeURIComponent(newSong.artist)}`;
+            audio.lrc = `${API_ROOT}/lyric?id=${encodeURIComponent(newSong.id)}&source=${newSong.source}`;
             audio.custom_id = newSong.id; // 更新为新ID
             
             // 如果这首歌当前正在播放，强制重新加载
@@ -1046,7 +1050,7 @@
         btn.style.opacity = '0.6';
 
         const duration = ds.duration || '';
-        const url = `/switch_source?name=${encodeURIComponent(name)}&artist=${encodeURIComponent(artist)}&source=${encodeURIComponent(source)}&duration=${encodeURIComponent(duration)}`;
+        const url = `${API_ROOT}/switch_source?name=${encodeURIComponent(name)}&artist=${encodeURIComponent(artist)}&source=${encodeURIComponent(source)}&duration=${encodeURIComponent(duration)}`;
         fetch(url)
             .then(r => r.ok ? r.json() : Promise.reject())
             .then(song => {
@@ -1093,9 +1097,9 @@
             playlist.push({
                 name: ds.name,
                 artist: ds.artist,
-                url: `/download?id=${encodeURIComponent(ds.id)}&source=${ds.source}&name=${encodeURIComponent(ds.name)}&artist=${encodeURIComponent(ds.artist)}`,
+                url: `${API_ROOT}/download?id=${encodeURIComponent(ds.id)}&source=${ds.source}&name=${encodeURIComponent(ds.name)}&artist=${encodeURIComponent(ds.artist)}`,
                 cover: coverUrl,
-                lrc: `/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
+                lrc: `${API_ROOT}/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
                 theme: '#667eea',
                 custom_id: ds.id 
             });
@@ -1214,9 +1218,9 @@
                     source: ds.source,
                     name: ds.name,
                     artist: ds.artist,
-                    url: `/download?id=${encodeURIComponent(ds.id)}&source=${ds.source}&name=${encodeURIComponent(ds.name)}&artist=${encodeURIComponent(ds.artist)}`,
+                    url: `${API_ROOT}/download?id=${encodeURIComponent(ds.id)}&source=${ds.source}&name=${encodeURIComponent(ds.name)}&artist=${encodeURIComponent(ds.artist)}`,
                     cover: coverUrl,
-                    lrc: `/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
+                    lrc: `${API_ROOT}/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
                     theme: '#667eea',
                     custom_id: ds.id
                 });
