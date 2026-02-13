@@ -34,7 +34,23 @@ Go Music DL 是一个音乐搜索与下载工具，带 Web 和 TUI 两种入口�
 ./music-dl web
 ```
 
-浏览器会自动打开 `http://localhost:8080`。
+浏览器会自动打开 `http://localhost:8080/music`。
+
+#### 反向代理配置
+
+如果需要通过 Nginx 等反向代理访问，可以配置路由前缀：
+
+```nginx
+location /music/ {
+    proxy_pass http://127.0.0.1:8080/music/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
+访问地址：`http://your-domain.com/music/`
+
+**注意：** 应用程序已内置路由前缀支持，无需额外配置即可在子路径下正常工作。
 
 ### Docker 模式
 
