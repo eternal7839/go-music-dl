@@ -12,6 +12,7 @@ services:
     volumes:
       # 挂载下载目录
       - ./downloads:/home/appuser/downloads
+      - ./cookies.json:/home/appuser/cookies.json
     environment:
       - TZ=Asia/Shanghai
     # 确保以 appuser (uid=1000) 身份运行，配合宿主机权限设置
