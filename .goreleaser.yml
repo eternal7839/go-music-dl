@@ -9,12 +9,14 @@ before:
     - go install github.com/tc-hib/go-winres@latest
     - go-winres make --in ./winres/winres.json --out ./cmd/music-dl/rsrc
 builds:
-  - id: nowin
+  # 1. Linux & macOS 构建 (统一在这里)
+  - id: unix
     env:
       - CGO_ENABLED=0
       - GO111MODULE=on
     goos:
       - linux
+      - darwin   # [新增] 添加 darwin 支持 macOS CLI 构建
     goarch:
       - 386
       - amd64
@@ -30,6 +32,8 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
+
+  # 2. Windows 构建 (保持不变)
   - id: win
     env:
       - CGO_ENABLED=0
@@ -61,20 +65,19 @@ changelog:
       - go mod tidy
 
 archives:
-  - id: nowin
+  # Linux & macOS 打包格式 (tar.gz)
+  - id: unix
     builds:
-      - nowin
+      - unix
     name_template: "go-music-dl_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
-    format_overrides:
-      - goos: windows
-        formats: zip
+    format: tar.gz
+
+  # Windows 打包格式 (zip)
   - id: win
     builds:
       - win
     name_template: "go-music-dl_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
-    format_overrides:
-      - goos: windows
-        formats: zip
+    format: zip
 
 nfpms:
   - license: AGPL 3.0
