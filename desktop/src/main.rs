@@ -1,9 +1,12 @@
+#![windows_subsystem = "windows"]
+
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
 use tao::event_loop::{ControlFlow, EventLoop};
 use tao::window::WindowBuilder;
-use wry::WebViewBuilder;
+// [关键修正] 引入 WebContext 修复 .with_data_directory 报错
+use wry::{WebViewBuilder, WebContext};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -12,27 +15,23 @@ use std::os::windows::process::CommandExt;
 //                 常量配置区域
 // ==========================================
 
-/// 窗口配置
 mod window_config {
     pub const TITLE: &str = "Music DL Desktop";
     pub const WIDTH: f64 = 1280.0;
     pub const HEIGHT: f64 = 800.0;
 }
 
-/// 后端服务配置 (Go程序)
 mod server_config {
     pub const PORT: &str = "37777";
-    pub const URL_PATH: &str = "/music/"; // 确保路径以 / 结尾或开头匹配你的后端路由
+    pub const URL_PATH: &str = "/music/";
     pub const STARTUP_DELAY_MS: u64 = 2000;
 
-    // 根据操作系统决定二进制文件名
     #[cfg(target_os = "windows")]
     pub const BINARY_NAME: &str = "music-dl.exe";
     #[cfg(not(target_os = "windows"))]
     pub const BINARY_NAME: &str = "music-dl";
 }
 
-/// 系统/进程相关配置
 mod system_config {
     #[cfg(target_os = "windows")]
     pub const CREATE_NO_WINDOW_FLAG: u32 = 0x08000000;
@@ -41,9 +40,7 @@ mod system_config {
 // ==========================================
 //                 嵌入式二进制文件
 // ==========================================
-
-/// 嵌入的Go后端二进制文件
-/// 路径解析：go-music-dl/desktop/src/main.rs -> ../../ -> music-dl.exe
+// 确保 music-dl.exe 在项目根目录（即 desktop 的上两级）
 #[cfg(target_os = "windows")]
 static MUSIC_DL_BINARY: &[u8] = include_bytes!("../../music-dl.exe");
 #[cfg(not(target_os = "windows"))]
@@ -56,18 +53,22 @@ static MUSIC_DL_BINARY: &[u8] = include_bytes!("../../music-dl");
 fn main() -> wry::Result<()> {
     // 1. 将嵌入的Go二进制文件提取到临时文件
     let temp_dir = std::env::temp_dir();
-    let temp_binary_path = temp_dir.join(server_config::BINARY_NAME);
+    
+    // 使用 Process ID 生成唯一文件名，防止多开或上次未正常退出导致的文件锁冲突
+    let unique_name = format!("{}_{}", std::process::id(), server_config::BINARY_NAME);
+    let temp_binary_path = temp_dir.join(unique_name);
 
-    // 如果临时文件已存在，先尝试删除（防止旧版本残留）
+    // 防御性删除
     if temp_binary_path.exists() {
         let _ = std::fs::remove_file(&temp_binary_path);
     }
 
-    println!("Extracting embedded music-dl binary to: {:?}", temp_binary_path);
+    // 解压文件
+    // println!("Extracting binary to: {:?}", temp_binary_path);
     std::fs::write(&temp_binary_path, MUSIC_DL_BINARY)
         .expect("Failed to write embedded binary to temp file");
 
-    // 设置临时文件为可执行权限 (Unix系统)
+    // Unix 系统赋予执行权限
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -81,27 +82,22 @@ fn main() -> wry::Result<()> {
 
     // 2. 启动 Go Web 服务
     let path = temp_binary_path.to_str().unwrap();
-    println!("Starting backend server with embedded binary: {}", path);
-
+    
     let mut cmd = Command::new(&path);
     cmd.arg("web")
        .arg("--no-browser")
        .arg("-p").arg(server_config::PORT);
 
-    // Windows 专用：隐藏控制台窗口
+    // Windows 专用：隐藏子进程控制台窗口
     #[cfg(target_os = "windows")]
     {
         cmd.creation_flags(system_config::CREATE_NO_WINDOW_FLAG);
     }
 
     let mut child = match cmd.spawn() {
-        Ok(process) => {
-            println!("Backend server started successfully");
-            process
-        }
+        Ok(process) => process,
         Err(e) => {
-            eprintln!("Failed to start backend server: {}", e);
-            // 清理临时文件
+            eprintln!("Failed to start backend: {}", e);
             let _ = std::fs::remove_file(&temp_binary_path);
             panic!("Failed to start Go backend server");
         }
@@ -111,7 +107,6 @@ fn main() -> wry::Result<()> {
     thread::sleep(Duration::from_millis(server_config::STARTUP_DELAY_MS));
 
     // 3. 加载图标
-    // include_bytes! 必须使用字面量路径
     const ICON_DATA: &[u8] = include_bytes!("../icon.png");
     let icon = match image::load_from_memory(ICON_DATA) {
         Ok(img) => {
@@ -132,9 +127,17 @@ fn main() -> wry::Result<()> {
         .unwrap();
 
     // 5. 加载 WebView
+    // ------------------------------------------------------------------
+    // [关键修正] 使用 WebContext 管理数据目录，解决 API 报错并隔离缓存
+    // ------------------------------------------------------------------
+    let data_dir = std::env::temp_dir().join("go-music-dl-webview-data");
+    let mut web_context = WebContext::new(Some(data_dir.clone()));
+
     let server_url = format!("http://localhost:{}{}", server_config::PORT, server_config::URL_PATH);
+    
     let _webview = WebViewBuilder::new(&window)
         .with_url(&server_url)
+        .with_web_context(&mut web_context) // 使用 Context 注入配置
         .build()?;
 
     // 6. 事件循环
@@ -146,55 +149,37 @@ fn main() -> wry::Result<()> {
                 event: tao::event::WindowEvent::CloseRequested,
                 ..
             } => {
-                println!("Terminating web server...");
+                // -----------------------------------------------------------
+                // [极速关闭优化] 1. 立即隐藏窗口，给用户“秒退”的视觉反馈
+                // -----------------------------------------------------------
+                window.set_visible(false);
 
-                // -----------------------------------------------------------
-                // 步骤 1: 终止子进程
-                // -----------------------------------------------------------
-                let _ = child.kill(); // 发送终止信号
-                
-                // Windows 兜底策略：如果 kill 之后进程还在，用 taskkill 强杀
-                #[cfg(target_os = "windows")]
-                {
-                    let _ = std::process::Command::new("taskkill")
-                        .args(&["/F", "/IM", server_config::BINARY_NAME])
-                        .output();
-                }
+                // 2. 终止子进程 (Kill)
+                // Rust 的 kill() 在 Windows 上调用 TerminateProcess，足以强杀，无需 taskkill
+                let _ = child.kill(); 
 
-                // -----------------------------------------------------------
-                // 步骤 2: 关键点 —— 等待进程真正退出 (释放文件锁的关键)
-                // -----------------------------------------------------------
-                // wait() 会阻塞直到子进程彻底消失。
-                // 如果不加这一行，代码会立即跑去删文件，而此时文件还被占用。
+                // 3. 关键：等待进程完全释放文件锁
                 match child.wait() {
-                    Ok(status) => println!("Backend process exited with: {}", status),
-                    Err(e) => eprintln!("Error waiting for process: {}", e),
+                    Ok(_) => {}, 
+                    Err(e) => eprintln!("Wait error: {}", e),
                 }
 
-                // -----------------------------------------------------------
-                // 步骤 3: 带重试机制的文件删除
-                // -----------------------------------------------------------
-                // 即使 wait() 返回了，Windows 有时也需要几十毫秒来释放文件句柄
+                // 4. 删除临时 exe (快速重试)
+                // 由于窗口已隐藏，这里稍慢一点用户也感觉不到
                 let max_retries = 5;
-                let mut deleted = false;
-                
-                for i in 1..=max_retries {
-                    if let Err(e) = std::fs::remove_file(&temp_binary_path) {
-                        eprintln!("Cleanup attempt {}/{} failed: {}", i, max_retries, e);
-                        // 如果删除失败，等待一小会儿再试
-                        thread::sleep(Duration::from_millis(200));
-                    } else {
-                        println!("Successfully cleaned up temporary binary file.");
-                        deleted = true;
+                for _ in 1..=max_retries {
+                    if std::fs::remove_file(&temp_binary_path).is_ok() {
                         break;
                     }
+                    // 缩短等待间隔，加速退出流程
+                    thread::sleep(Duration::from_millis(50));
                 }
 
-                if !deleted {
-                    eprintln!("WARNING: Failed to delete temp file after multiple attempts. System may clean it up later.");
+                // 5. 清理 WebView 缓存 (最耗时操作)
+                if data_dir.exists() {
+                    let _ = std::fs::remove_dir_all(&data_dir);
                 }
 
-                println!("Web server terminated. Exiting...");
                 *control_flow = ControlFlow::Exit;
             }
             _ => (),
