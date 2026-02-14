@@ -1,6 +1,8 @@
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
+use std::thread;
+use std::time::Duration;
 use tao::event_loop::{ControlFlow, EventLoop};
 use tao::window::WindowBuilder;
 use wry::WebViewBuilder;
@@ -110,6 +112,8 @@ fn main() -> wry::Result<()> {
 
     // 2. 加载图标
     // include_bytes! 必须使用字面量路径，无法使用 const
+    // 2. 加载图标
+    // include_bytes! 必须使用字面量路径，无法使用 const
     const ICON_DATA: &[u8] = include_bytes!("../icon.png");
     let icon = match image::load_from_memory(ICON_DATA) {
         Ok(img) => {
@@ -121,8 +125,11 @@ fn main() -> wry::Result<()> {
     };
 
     // 3. 创建窗口
+    // 3. 创建窗口
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
+        .with_title(window_config::TITLE)
+        .with_inner_size(tao::dpi::LogicalSize::new(window_config::WIDTH, window_config::HEIGHT))
         .with_title(window_config::TITLE)
         .with_inner_size(tao::dpi::LogicalSize::new(window_config::WIDTH, window_config::HEIGHT))
         .with_window_icon(icon)
@@ -132,10 +139,15 @@ fn main() -> wry::Result<()> {
     // 4. 加载 WebView
     // 动态构建 URL：http://localhost:PORT/PATH
     let server_url = format!("http://localhost:{}{}", server_config::PORT, server_config::URL_PATH);
+    // 4. 加载 WebView
+    // 动态构建 URL：http://localhost:PORT/PATH
+    let server_url = format!("http://localhost:{}{}", server_config::PORT, server_config::URL_PATH);
     let _webview = WebViewBuilder::new(&window)
+        .with_url(&server_url)
         .with_url(&server_url)
         .build()?;
 
+    // 5. 事件循环
     // 5. 事件循环
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -155,6 +167,7 @@ fn main() -> wry::Result<()> {
                     #[cfg(target_os = "windows")]
                     {
                         let _ = std::process::Command::new("taskkill")
+                            .args(&["/F", "/IM", server_config::BINARY_NAME])
                             .args(&["/F", "/IM", server_config::BINARY_NAME])
                             .output();
                     }
