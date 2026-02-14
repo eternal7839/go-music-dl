@@ -24,7 +24,6 @@ mod server_config {
     pub const PORT: &str = "37777";
     pub const URL_PATH: &str = "/music/"; // 确保路径以 / 结尾或开头匹配你的后端路由
     pub const STARTUP_DELAY_MS: u64 = 2000;
-    pub const SHUTDOWN_DELAY_MS: u64 = 500;
 
     // 根据操作系统决定二进制文件名
     #[cfg(target_os = "windows")]
@@ -149,26 +148,50 @@ fn main() -> wry::Result<()> {
             } => {
                 println!("Terminating web server...");
 
-                // 尝试优雅关闭子进程
-                if let Err(e) = child.kill() {
-                    eprintln!("Failed to kill child process: {}", e);
+                // -----------------------------------------------------------
+                // 步骤 1: 终止子进程
+                // -----------------------------------------------------------
+                let _ = child.kill(); // 发送终止信号
+                
+                // Windows 兜底策略：如果 kill 之后进程还在，用 taskkill 强杀
+                #[cfg(target_os = "windows")]
+                {
+                    let _ = std::process::Command::new("taskkill")
+                        .args(&["/F", "/IM", server_config::BINARY_NAME])
+                        .output();
+                }
 
-                    // Windows 兜底策略：使用 taskkill 强制结束
-                    #[cfg(target_os = "windows")]
-                    {
-                        let _ = std::process::Command::new("taskkill")
-                            .args(&["/F", "/IM", server_config::BINARY_NAME])
-                            .output();
+                // -----------------------------------------------------------
+                // 步骤 2: 关键点 —— 等待进程真正退出 (释放文件锁的关键)
+                // -----------------------------------------------------------
+                // wait() 会阻塞直到子进程彻底消失。
+                // 如果不加这一行，代码会立即跑去删文件，而此时文件还被占用。
+                match child.wait() {
+                    Ok(status) => println!("Backend process exited with: {}", status),
+                    Err(e) => eprintln!("Error waiting for process: {}", e),
+                }
+
+                // -----------------------------------------------------------
+                // 步骤 3: 带重试机制的文件删除
+                // -----------------------------------------------------------
+                // 即使 wait() 返回了，Windows 有时也需要几十毫秒来释放文件句柄
+                let max_retries = 5;
+                let mut deleted = false;
+                
+                for i in 1..=max_retries {
+                    if let Err(e) = std::fs::remove_file(&temp_binary_path) {
+                        eprintln!("Cleanup attempt {}/{} failed: {}", i, max_retries, e);
+                        // 如果删除失败，等待一小会儿再试
+                        thread::sleep(Duration::from_millis(200));
+                    } else {
+                        println!("Successfully cleaned up temporary binary file.");
+                        deleted = true;
+                        break;
                     }
                 }
 
-                thread::sleep(Duration::from_millis(server_config::SHUTDOWN_DELAY_MS));
-
-                // 退出前清理临时文件
-                if let Err(e) = std::fs::remove_file(&temp_binary_path) {
-                    eprintln!("Failed to clean up temp binary file: {}", e);
-                } else {
-                    println!("Cleaned up temporary binary file");
+                if !deleted {
+                    eprintln!("WARNING: Failed to delete temp file after multiple attempts. System may clean it up later.");
                 }
 
                 println!("Web server terminated. Exiting...");
