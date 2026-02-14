@@ -179,7 +179,10 @@ jobs:
       - name: Package RPM
         run: |
           cd desktop
-          cargo generate-rpm --no-build --output ../go-music-dl-linux-amd64.rpm
+          # cargo-generate-rpm 会自动利用现有的 release 构建
+          cargo generate-rpm
+          # 生成的文件在 target/generate-rpm/ 目录下，将其移动并重命名
+          mv target/generate-rpm/*.rpm ../go-music-dl-linux-amd64.rpm
 
       - name: Package AppImage
         run: |
