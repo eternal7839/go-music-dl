@@ -104,6 +104,33 @@ docker-compose down
 - 支持后台运行和自动重启
 - 可轻松添加 Nginx 等反向代理服务
 
+### 远程部署
+
+使用部署脚本自动拉取最新镜像并启动服务：
+
+```bash
+# 下载部署脚本
+wget https://raw.githubusercontent.com/guohuiyuan/go-music-dl/main/deploy.sh
+
+# 运行部署
+bash deploy.sh
+```
+
+脚本会自动：
+
+- 检查Docker环境
+- 创建部署目录
+- 拉取最新Docker镜像
+- 生成docker-compose.yml
+- 启动服务
+
+访问：http://localhost:8080
+
+**说明：**
+- 部署目录为 `music-dl/`
+- 下载文件保存在 `music-dl/downloads/`
+- Cookies文件为 `music-dl/cookies.json`
+
 ### CLI/TUI 模式
 
 ```bash

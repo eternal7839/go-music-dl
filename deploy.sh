@@ -4,18 +4,18 @@
 export MSYS_NO_PATHCONV=1
 # ---------------------------------------------------------
 
-# Go-Music-DL 远程镜像部署脚本
+# Go-Music-DL 远程镜像部署脚本 (适配版)
 
 set -e
 
 # ================= 配置项 =================
-# 镜像名称 (请确保已推送到 Docker Hub)
+# 镜像名称
 IMAGE_NAME="guohuiyuan/go-music-dl:latest"
 # 部署目录
 WORK_DIR="music-dl"
 # =========================================
 
-echo "🎵 开始部署 Go-Music-DL (远程镜像版)..."
+echo "🎵 开始部署 Go-Music-DL (适配 Docker Compose 版)..."
 
 # 1. 检查 Docker 环境
 if ! command -v docker &> /dev/null; then
@@ -52,18 +52,30 @@ if docker ps -a --format '{{.Names}}' | grep -q "^music-dl$"; then
     docker rm -f music-dl
 fi
 
-# 4. 创建挂载目录与权限 (关键)
-# 必须给 downloads 目录 777 权限，因为容器内是 appuser (uid:1000)
+# 4. 创建挂载目录/文件与权限 (关键适配点)
+# -------------------------------------------------
+# 适配点 A: 下载目录
 if [ ! -d "downloads" ]; then
     echo "📁 创建下载目录 downloads/ ..."
     mkdir -p downloads
 fi
 
-echo "🔐 修正目录权限 (chmod 777 downloads) ..."
+# 适配点 B: Cookies 文件 (同步 docker-compose.yml 配置)
+if [ ! -f "cookies.json" ]; then
+    echo "🍪 创建空的 cookies.json ..."
+    touch cookies.json
+    echo "{}" > cookies.json
+fi
+
+echo "🔐 修正权限 (chmod 777 downloads & 666 cookies) ..."
+# 目录给 777 以便容器内创建文件
 chmod -R 777 downloads
+# cookies 文件给 666 以便容器内读取/写入
+chmod 666 cookies.json
+# -------------------------------------------------
 
 # 5. 生成 docker-compose.yml
-# 注意：这里不再包含 build 字段，而是直接指定 image
+# 适配点 C: 将 cookies.json 挂载写入配置
 echo "📝 生成 docker-compose.yml..."
 cat > docker-compose.yml <<EOF
 services:
@@ -75,6 +87,7 @@ services:
       - "8080:8080"
     volumes:
       - ./downloads:/home/appuser/downloads
+      - ./cookies.json:/home/appuser/cookies.json
     environment:
       - TZ=Asia/Shanghai
     user: "1000:1000"
@@ -97,10 +110,11 @@ if docker ps | grep -q "music-dl"; then
     echo "------------------------------------------------"
     echo "🎵 Web 访问: http://localhost:8080"
     echo "📂 本地目录: $(pwd)/downloads"
+    echo "🍪 Cookies : $(pwd)/cookies.json"
     echo ""
     echo "👇 常用命令 (请先 cd $WORK_DIR):"
     echo "   查看日志: $DOCKER_COMPOSE_CMD logs -f"
-    echo "   更新镜像: $DOCKER_COMPOSE_CMD pull && $DOCKER_COMPOSE_CMD up -d"
+    echo "   重启服务: $DOCKER_COMPOSE_CMD restart"
     echo "------------------------------------------------"
 else
     echo ""
