@@ -1,8 +1,6 @@
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
-use std::thread;
-use std::time::Duration;
 use tao::event_loop::{ControlFlow, EventLoop};
 use tao::window::WindowBuilder;
 use wry::WebViewBuilder;
@@ -19,15 +17,12 @@ mod window_config {
     pub const TITLE: &str = "Music DL Desktop";
     pub const WIDTH: f64 = 1280.0;
     pub const HEIGHT: f64 = 800.0;
-    // 注意：include_bytes! 宏必须使用字符串字面量，不能使用常量变量
-    // 所以这里只定义路径作为注释参考，实际代码中仍需写死
-    // pub const ICON_PATH: &str = "../icon.png";
 }
 
 /// 后端服务配置 (Go程序)
 mod server_config {
     pub const PORT: &str = "37777";
-    pub const URL_PATH: &str = "/music/";
+    pub const URL_PATH: &str = "/music/"; // 确保路径以 / 结尾或开头匹配你的后端路由
     pub const STARTUP_DELAY_MS: u64 = 2000;
     pub const SHUTDOWN_DELAY_MS: u64 = 500;
 
@@ -38,23 +33,22 @@ mod server_config {
     pub const BINARY_NAME: &str = "music-dl";
 }
 
-// ==========================================
-//                 嵌入式二进制文件
-// ==========================================
-
-/// 嵌入的Go后端二进制文件
-/// 注意：此文件在构建时由build.rs自动生成到项目根目录
-/// 路径解析：desktop/src/main.rs -> ../../ -> go-music-dl/music-dl.exe
-#[cfg(target_os = "windows")]
-static MUSIC_DL_BINARY: &[u8] = include_bytes!("../../music-dl.exe");
-#[cfg(not(target_os = "windows"))]
-static MUSIC_DL_BINARY: &[u8] = include_bytes!("../../music-dl");
-
 /// 系统/进程相关配置
 mod system_config {
     #[cfg(target_os = "windows")]
     pub const CREATE_NO_WINDOW_FLAG: u32 = 0x08000000;
 }
+
+// ==========================================
+//                 嵌入式二进制文件
+// ==========================================
+
+/// 嵌入的Go后端二进制文件
+/// 路径解析：desktop/src/main.rs -> ../../ -> go-music-dl/music-dl.exe
+#[cfg(target_os = "windows")]
+static MUSIC_DL_BINARY: &[u8] = include_bytes!("../../music-dl.exe");
+#[cfg(not(target_os = "windows"))]
+static MUSIC_DL_BINARY: &[u8] = include_bytes!("../../music-dl");
 
 // ==========================================
 //                 主程序逻辑
@@ -64,6 +58,11 @@ fn main() -> wry::Result<()> {
     // 1. 将嵌入的Go二进制文件提取到临时文件
     let temp_dir = std::env::temp_dir();
     let temp_binary_path = temp_dir.join(server_config::BINARY_NAME);
+
+    // 如果临时文件已存在，先尝试删除（防止旧版本残留）
+    if temp_binary_path.exists() {
+        let _ = std::fs::remove_file(&temp_binary_path);
+    }
 
     println!("Extracting embedded music-dl binary to: {:?}", temp_binary_path);
     std::fs::write(&temp_binary_path, MUSIC_DL_BINARY)
@@ -82,7 +81,6 @@ fn main() -> wry::Result<()> {
     }
 
     // 2. 启动 Go Web 服务
-
     let path = temp_binary_path.to_str().unwrap();
     println!("Starting backend server with embedded binary: {}", path);
 
@@ -97,23 +95,24 @@ fn main() -> wry::Result<()> {
         cmd.creation_flags(system_config::CREATE_NO_WINDOW_FLAG);
     }
 
-    let mut child = if let Ok(process) = cmd.spawn() {
-        println!("Backend server started successfully");
-        process
-    } else {
-        eprintln!("Failed to start backend server");
-        // 清理临时文件
-        let _ = std::fs::remove_file(&temp_binary_path);
-        panic!("Failed to start Go backend server");
+    let mut child = match cmd.spawn() {
+        Ok(process) => {
+            println!("Backend server started successfully");
+            process
+        }
+        Err(e) => {
+            eprintln!("Failed to start backend server: {}", e);
+            // 清理临时文件
+            let _ = std::fs::remove_file(&temp_binary_path);
+            panic!("Failed to start Go backend server");
+        }
     };
 
     // 等待服务启动
     thread::sleep(Duration::from_millis(server_config::STARTUP_DELAY_MS));
 
-    // 2. 加载图标
-    // include_bytes! 必须使用字面量路径，无法使用 const
-    // 2. 加载图标
-    // include_bytes! 必须使用字面量路径，无法使用 const
+    // 3. 加载图标
+    // include_bytes! 必须使用字面量路径
     const ICON_DATA: &[u8] = include_bytes!("../icon.png");
     let icon = match image::load_from_memory(ICON_DATA) {
         Ok(img) => {
@@ -124,31 +123,22 @@ fn main() -> wry::Result<()> {
         Err(_) => None,
     };
 
-    // 3. 创建窗口
-    // 3. 创建窗口
+    // 4. 创建窗口
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
-        .with_title(window_config::TITLE)
-        .with_inner_size(tao::dpi::LogicalSize::new(window_config::WIDTH, window_config::HEIGHT))
         .with_title(window_config::TITLE)
         .with_inner_size(tao::dpi::LogicalSize::new(window_config::WIDTH, window_config::HEIGHT))
         .with_window_icon(icon)
         .build(&event_loop)
         .unwrap();
 
-    // 4. 加载 WebView
-    // 动态构建 URL：http://localhost:PORT/PATH
-    let server_url = format!("http://localhost:{}{}", server_config::PORT, server_config::URL_PATH);
-    // 4. 加载 WebView
-    // 动态构建 URL：http://localhost:PORT/PATH
+    // 5. 加载 WebView
     let server_url = format!("http://localhost:{}{}", server_config::PORT, server_config::URL_PATH);
     let _webview = WebViewBuilder::new(&window)
         .with_url(&server_url)
-        .with_url(&server_url)
         .build()?;
 
-    // 5. 事件循环
-    // 5. 事件循环
+    // 6. 事件循环
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
@@ -168,14 +158,13 @@ fn main() -> wry::Result<()> {
                     {
                         let _ = std::process::Command::new("taskkill")
                             .args(&["/F", "/IM", server_config::BINARY_NAME])
-                            .args(&["/F", "/IM", server_config::BINARY_NAME])
                             .output();
                     }
                 }
 
                 thread::sleep(Duration::from_millis(server_config::SHUTDOWN_DELAY_MS));
 
-                // 清理临时文件
+                // 退出前清理临时文件
                 if let Err(e) = std::fs::remove_file(&temp_binary_path) {
                     eprintln!("Failed to clean up temp binary file: {}", e);
                 } else {
