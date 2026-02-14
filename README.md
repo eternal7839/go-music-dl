@@ -1,6 +1,30 @@
 # Go Music DL
 
-Go Music DL 是一个音乐搜索与下载工具，带 Web 和 TUI 两种入口。你可以在浏览器试听，也可以在终端里批量下载。
+Go Music DL 是一个音乐搜索与下载工具，支持 **Web 界面**、**TUI 终端** 和 **桌面应用** 三种使用模式。你可以在浏览器试听，也可以在终端里批量下载，或使用原生桌面应用享受最佳体验。
+
+## 🚀 快速开始
+
+### 桌面应用 (推荐)
+
+最简单的使用方式，下载即用：
+
+1. 从 [Releases](https://github.com/guohuiyuan/go-music-dl/releases) 下载 `music-dl-desktop.exe`
+2. 解压，双击运行
+3. 享受原生桌面体验！
+
+### Web 模式
+
+```bash
+./music-dl web
+```
+
+### TUI 模式
+
+```bash
+./music-dl -k "搜索关键词"
+```
+
+---
 
 ![Web UI 1](./screenshots/web1.png)
 ![Web UI 2](./screenshots/web2.png)
@@ -10,12 +34,13 @@ Go Music DL 是一个音乐搜索与下载工具，带 Web 和 TUI 两种入口�
 
 ## 主要功能
 
-- Web 与 TUI 双模式
+- **多模式支持**: Web 界面、TUI 终端、桌面应用
 - 多平台聚合搜索与歌单搜索
 - 试听、歌词、封面下载
 - Range 探测：显示大小与码率
 - 汽水音乐等加密音频解密
 - 过滤需要付费的资源
+- **桌面应用特性**: 原生窗口、自动服务启动、智能缓存管理
 
 ## 新增改动（简要）
 
@@ -41,6 +66,7 @@ Go Music DL 是一个音乐搜索与下载工具，带 Web 和 TUI 两种入口�
 - 🔒 使用罕见端口(37777)，避免端口冲突
 - 👻 后台静默运行，不打开额外浏览器窗口
 - 🛑 关闭窗口时自动终止Web服务进程
+- 🗂️ 智能缓存管理，不污染程序目录
 
 #### 下载使用
 
@@ -51,23 +77,9 @@ Go Music DL 是一个音乐搜索与下载工具，带 Web 和 TUI 两种入口�
 
 **注意**: 桌面应用使用罕见端口37777，避免与其他应用的端口冲突。
 
-#### 手动构建
+#### 开发与构建
 
-如果需要自定义构建：
-
-```bash
-# 1. 构建Go二进制文件
-cd go-music-dl
-go build -o ../go-music-dl-desktop/music-dl cmd/music-dl/main.go
-
-# 2. 构建Rust桌面应用
-cd ../go-music-dl-desktop
-cargo build --release
-
-# 3. 打包
-# Windows
-./package.bat
-```
+桌面应用的详细开发指南和构建说明请参考 [desktop/README.md](desktop/README.md)。
 
 #### 系统要求
 - Windows 10/11 (推荐)
@@ -279,11 +291,37 @@ TUI 在输入界面按 `w` 直接拉取推荐歌单，然后回车进详情。
 支持解析的平台：网易云、QQ音乐、酷狗、酷我、汽水音乐、5sing、Bilibili。
 
 ## 常见问题
+
+### 桌面应用相关
+
 **Q: 桌面应用打不开或显示空白？**
 检查是否已安装 WebView2 运行时。从 [Microsoft官网](https://developer.microsoft.com/microsoft-edge/webview2/) 下载安装最新版本。
 
 **Q: 桌面应用启动慢或卡顿？**
 首次运行需要下载 WebView2 运行时。也可提前安装 Evergreen Bootstrapper 版本。
+
+**Q: 桌面应用启动时提示"另一个程序正在使用此文件"？**
+这是因为上一次运行的后台进程没有正常退出。解决方案：
+```powershell
+# 强制结束残留进程
+taskkill /F /IM music-dl.exe
+```
+
+**Q: 如何构建桌面应用？**
+```bash
+# 1. 构建 Go 二进制
+go build -o desktop/music-dl.exe cmd/music-dl/main.go
+
+# 2. 构建 Rust 桌面应用
+cd desktop
+cargo build --release
+```
+
+**Q: 桌面应用支持哪些平台？**
+目前支持 Windows (x64/x86/arm64)、macOS (x64/arm64)、Linux (x64)。
+
+### 通用问题
+
 **Q: 有些歌搜不到或下载失败？**
 可能是付费限制、平台接口变更或网络问题。
 
@@ -303,13 +341,25 @@ go-music-dl/
 ├── internal/
 │   ├── cli/              # TUI 界面
 │   └── web/              # Web 服务器和模板
+├── desktop/               # 桌面应用 (Rust + Tao/Wry)
+│   ├── src/
+│   │   └── main.rs       # 桌面应用主程序
+│   ├── Cargo.toml        # Rust 依赖配置
+│   ├── build.rs          # 构建脚本 (Windows 图标)
+│   ├── icon.png          # 应用图标
+│   ├── README.md         # 桌面应用详细说明
+│   └── target/           # 构建输出目录
 ├── downloads/            # 下载文件目录
 ├── screenshots/          # 截图资源
-├── go-music-dl-desktop/  # 桌面应用 (Rust + Tao/Wry)
-│   ├── src/
-│   ├── Cargo.toml
-│   └── music-dl          # Go二进制文件
-└── README.md
+├── cookies.json          # Cookie 配置文件
+├── docker-compose.yml    # Docker Compose 配置
+├── Dockerfile            # Docker 构建配置
+├── deploy.sh             # 部署脚本
+├── go.mod                # Go 模块配置
+├── package.bat           # Windows 打包脚本
+├── run.bat               # Windows 运行脚本
+├── run.sh                # Linux/macOS 运行脚本
+└── README.md             # 主项目说明
 ```
 
 ## 技术栈
@@ -322,6 +372,16 @@ go-music-dl/
 - **图像处理**: [image](https://github.com/image-rs/image) - 图标处理
 - **下载库**: [music-dl](https://github.com/0xHJK/music-dl) - 音乐下载库
 - **下载库**: [musicdl](https://github.com/CharlesPikachu/musicdl) - 音乐下载库
+
+### 桌面应用架构
+
+桌面应用采用前后端分离架构：
+
+- **前端**: Rust + Tao/Wry - 负责窗口管理、WebView 渲染和进程管理
+- **后端**: Go 二进制 - 嵌入到桌面应用中，提供 Web 服务和音乐功能
+- **通信**: HTTP 本地服务 - 前后端通过 `http://localhost:37777` 通信
+
+详细说明请参考 [desktop/README.md](desktop/README.md)
 
 ## 贡献
 
