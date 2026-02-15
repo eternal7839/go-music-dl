@@ -133,29 +133,50 @@ location /music/ {
 docker build -t go-music-dl .
 
 # 运行 Web 模式
-docker run -p 8080:8080 -v $(pwd)/downloads:/home/appuser/downloads go-music-dl
+docker run -d --name music-dl \
+  -p 8080:8080 \
+  -v $(pwd)/downloads:/home/appuser/downloads \
+  -v $(pwd)/cookies.json:/home/appuser/cookies.json \
+  -e TZ=Asia/Shanghai \
+  --user 1000:1000 \
+  --restart unless-stopped \
+  go-music-dl
 ```
 
 浏览器会自动打开 `http://localhost:8080`。
 
 **说明：**
 - downloads目录会挂载到容器内，便于下载文件持久化
+- cookies.json文件也会挂载，用于配置
+- 设置时区为亚洲上海
+- 以非root用户(uid=1000)运行，提高安全性
+- 后台运行并自动重启
 - 如需修改端口，使用 `-p 新端口:8080`
 
 #### Docker Compose 模式
 
-创建 `docker-compose.yml` 文件：
+项目已包含 `docker-compose.yml` 文件，直接使用：
 
 ```yaml
-version: '3.8'
 services:
-  go-music-dl:
-    build: .
+  music-dl:
+    # 如果当前目录下有 Dockerfile，会自动构建
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    image: go-music-dl:latest
+    container_name: music-dl
+    restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
+      # 挂载下载目录
       - ./downloads:/home/appuser/downloads
-    restart: unless-stopped
+      - ./cookies.json:/home/appuser/cookies.json
+    environment:
+      - TZ=Asia/Shanghai
+    # 确保以 appuser (uid=1000) 身份运行，配合宿主机权限设置
+    user: "1000:1000"
 ```
 
 运行：
@@ -176,6 +197,9 @@ docker-compose down
 **说明：**
 - 自动构建镜像并管理容器
 - 支持后台运行和自动重启
+- 挂载下载目录和cookies配置文件
+- 设置时区为亚洲上海
+- 以非root用户运行，提高安全性
 - 可轻松添加 Nginx 等反向代理服务
 
 ### 远程部署
