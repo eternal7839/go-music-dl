@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -35,8 +37,6 @@ import (
 	"github.com/guohuiyuan/music-lib/qq"
 	"github.com/guohuiyuan/music-lib/soda"
 	"github.com/guohuiyuan/music-lib/utils"
-
-	videogen "github.com/guohuiyuan/music-video-gen"
 )
 
 //go:embed templates/*
@@ -48,9 +48,7 @@ const (
 	Ref_Bilibili = "https://www.bilibili.com/"
 	Ref_Migu     = "http://music.migu.cn/"
 	CookieFile   = "cookies.json"
-
-	// Route prefix for reverse proxy support
-	RoutePrefix = "/music"
+	RoutePrefix  = "/music"
 )
 
 // --- Cookie 管理 ---
@@ -93,6 +91,22 @@ func (m *CookieManager) SetAll(c map[string]string) {
 	}
 }
 
+// --- 中间件 ---
+func corsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		method := c.Request.Method
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE, UPDATE")
+		c.Header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization")
+		c.Header("Access-Control-Expose-Headers", "Content-Length, Access-Control-Allow-Origin, Access-Control-Allow-Headers, Cache-Control, Content-Language, Content-Type")
+		c.Header("Access-Control-Allow-Credentials", "true")
+		if method == "OPTIONS" {
+			c.AbortWithStatus(http.StatusNoContent)
+		}
+		c.Next()
+	}
+}
+
 func buildSourceRequest(method, urlStr, source, rangeHeader string) (*http.Request, error) {
 	req, err := http.NewRequest(method, urlStr, nil)
 	if err != nil {
@@ -118,8 +132,50 @@ func buildSourceRequest(method, urlStr, source, rangeHeader string) (*http.Reque
 	return req, nil
 }
 
-// --- 工厂函数 ---
+// --- 视频生成状态管理 (合并自原 videogen 库) ---
+type RenderSession struct {
+	ID        string
+	Dir       string
+	AudioPath string
+	Total     int
+	Mutex     sync.Mutex
+}
 
+var (
+	sessions = make(map[string]*RenderSession)
+	sessMu   sync.Mutex
+)
+
+// 清理旧文件的辅助函数
+func cleanupOldFiles(dir string, maxAge time.Duration) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if now.Sub(info.ModTime()) > maxAge {
+			os.Remove(filepath.Join(dir, entry.Name()))
+		}
+	}
+}
+
+func saveBase64(dataURI, path string) error {
+	if len(dataURI) > 23 {
+		dataURI = dataURI[23:]
+	}
+	data, err := base64.StdEncoding.DecodeString(dataURI)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// --- 工厂函数 ---
 func getSearchFunc(source string) func(string) ([]model.Song, error) {
 	c := cm.Get(source)
 	switch source {
@@ -150,7 +206,6 @@ func getSearchFunc(source string) func(string) ([]model.Song, error) {
 	}
 }
 
-// 歌单搜索工厂
 func getPlaylistSearchFunc(source string) func(string) ([]model.Playlist, error) {
 	c := cm.Get(source)
 	switch source {
@@ -173,7 +228,6 @@ func getPlaylistSearchFunc(source string) func(string) ([]model.Playlist, error)
 	}
 }
 
-// 歌单详情工厂
 func getPlaylistDetailFunc(source string) func(string) ([]model.Song, error) {
 	c := cm.Get(source)
 	switch source {
@@ -196,7 +250,6 @@ func getPlaylistDetailFunc(source string) func(string) ([]model.Song, error) {
 	}
 }
 
-// 推荐歌单工厂 (仅支持 qq, netease, kuwo, kugou)
 func getRecommendFunc(source string) func() ([]model.Playlist, error) {
 	c := cm.Get(source)
 	switch source {
@@ -299,7 +352,6 @@ func getParseFunc(source string) func(string) (*model.Song, error) {
 	}
 }
 
-// 歌单解析工厂
 func getParsePlaylistFunc(source string) func(string) (*model.Playlist, []model.Song, error) {
 	c := cm.Get(source)
 	switch source {
@@ -353,9 +405,6 @@ func detectSource(link string) string {
 	return ""
 }
 
-// 辅助函数：生成原始链接
-// 注意：虽然 music-lib 已经处理了 Link，但在 `/playlist` 详情接口中，
-// 我们只获得了 []Song，没有 Playlist 结构体，因此需要此函数来生成“回到歌单”的链接。
 func getOriginalLink(source, id, typeStr string) string {
 	switch source {
 	case "netease":
@@ -372,7 +421,6 @@ func getOriginalLink(source, id, typeStr string) string {
 		if typeStr == "playlist" {
 			return "https://www.kugou.com/yy/special/single/" + id + ".html"
 		}
-		// 酷狗单曲ID通常是Hash
 		return "https://www.kugou.com/song/#hash=" + id
 	case "kuwo":
 		if typeStr == "playlist" {
@@ -394,27 +442,43 @@ func getOriginalLink(source, id, typeStr string) string {
 }
 
 // --- Main ---
-
 func Start(port string, shouldOpenBrowser bool) {
 	cm.Load()
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
-	// 注册模板
+	r.Use(corsMiddleware())
+
 	tmpl := template.Must(template.New("").ParseFS(templateFS, "templates/*.html"))
 	r.SetHTMLTemplate(tmpl)
 
-	// 访问根目录 / 时，自动重定向到 /music
 	r.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, RoutePrefix)
 	})
 
-	// Create route group for prefix support
+	// 初始化视频生成目录和清理任务
+	videoDir := "video_output"
+	os.MkdirAll(videoDir, 0755)
+	go func() {
+		for {
+			time.Sleep(10 * time.Minute)
+			cleanupOldFiles(videoDir, 10*time.Minute)
+		}
+	}()
+	r.Static(RoutePrefix+"/videos", videoDir)
+
 	api := r.Group(RoutePrefix)
 
-	// Static resources
 	api.GET("/icon.png", func(c *gin.Context) { c.FileFromFS("templates/icon.png", http.FS(templateFS)) })
+	// [修改] 直接从模板加载新的 JS 文件
+	api.GET("/videogen.js", func(c *gin.Context) { c.FileFromFS("templates/videogen.js", http.FS(templateFS)) })
+	// [新增] 注册 app.js 的路由
+	api.GET("/app.js", func(c *gin.Context) { c.FileFromFS("templates/app.js", http.FS(templateFS)) })
+	
+	api.GET("/render", func(c *gin.Context) {
+		c.HTML(200, "render.html", gin.H{"Root": RoutePrefix})
+	})
 
 	api.GET("/cookies", func(c *gin.Context) { c.JSON(200, cm.cookies) })
 	api.POST("/cookies", func(c *gin.Context) {
@@ -430,7 +494,6 @@ func Start(port string, shouldOpenBrowser bool) {
 		renderIndex(c, nil, nil, "", nil, "", "song", "")
 	})
 
-	// Daily recommendations
 	api.GET("/recommend", func(c *gin.Context) {
 		sources := c.QueryArray("sources")
 		if len(sources) == 0 {
@@ -462,7 +525,6 @@ func Start(port string, shouldOpenBrowser bool) {
 		renderIndex(c, nil, allPlaylists, "🔥 每日推荐", sources, "", "playlist", "")
 	})
 
-	// Search (Song & Playlist)
 	api.GET("/search", func(c *gin.Context) {
 		keyword := strings.TrimSpace(c.Query("q"))
 		searchType := c.DefaultQuery("type", "song")
@@ -480,35 +542,27 @@ func Start(port string, shouldOpenBrowser bool) {
 		var allPlaylists []model.Playlist
 		var errorMsg string
 
-		// 1. Link parsing mode
 		if strings.HasPrefix(keyword, "http") {
 			src := detectSource(keyword)
 			if src == "" {
 				errorMsg = "不支持该链接的解析，或无法识别来源"
 			} else {
 				parsed := false
-
-				// Try single song
 				parseFn := getParseFunc(src)
 				if parseFn != nil {
 					if song, err := parseFn(keyword); err == nil {
-						// 已由 music-lib 填充 Link
 						allSongs = append(allSongs, *song)
 						searchType = "song"
 						parsed = true
 					}
 				}
-
-				// Try playlist
 				if !parsed {
 					parsePlaylistFn := getParsePlaylistFunc(src)
 					if parsePlaylistFn != nil {
 						if playlist, songs, err := parsePlaylistFn(keyword); err == nil {
 							if searchType == "playlist" {
-								// 已由 music-lib 填充 Link
 								allPlaylists = append(allPlaylists, *playlist)
 							} else {
-								// 已由 music-lib 填充 Link
 								allSongs = append(allSongs, songs...)
 								searchType = "song"
 							}
@@ -516,13 +570,11 @@ func Start(port string, shouldOpenBrowser bool) {
 						}
 					}
 				}
-
 				if !parsed {
 					errorMsg = fmt.Sprintf("解析失败: 暂不支持 %s 平台的此链接类型或解析出错", src)
 				}
 			}
 		} else {
-			// 2. Keyword search
 			var wg sync.WaitGroup
 			var mu sync.Mutex
 
@@ -530,7 +582,6 @@ func Start(port string, shouldOpenBrowser bool) {
 				wg.Add(1)
 				go func(s string) {
 					defer wg.Done()
-
 					if searchType == "playlist" {
 						fn := getPlaylistSearchFunc(s)
 						if fn != nil {
@@ -563,7 +614,6 @@ func Start(port string, shouldOpenBrowser bool) {
 		renderIndex(c, allSongs, allPlaylists, keyword, sources, errorMsg, searchType, "")
 	})
 
-	// Get playlist details and render
 	api.GET("/playlist", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
@@ -571,28 +621,20 @@ func Start(port string, shouldOpenBrowser bool) {
 			renderIndex(c, nil, nil, "", nil, "缺少参数", "song", "")
 			return
 		}
-
 		fn := getPlaylistDetailFunc(src)
 		if fn == nil {
 			renderIndex(c, nil, nil, "", nil, "该源不支持查看歌单详情", "song", "")
 			return
 		}
-
-		// music-lib 的 songs 已经包含 Link
 		songs, err := fn(id)
 		errMsg := ""
 		if err != nil {
 			errMsg = fmt.Sprintf("获取歌单失败: %v", err)
 		}
-
-		// [关键] music-lib 的 GetPlaylistSongs 只返回歌曲列表，不返回歌单元数据
-		// 所以我们需要手动构建歌单的原始链接，用于前端的“打开原始歌单”按钮
 		playlistLink := getOriginalLink(src, id, "playlist")
-
 		renderIndex(c, songs, nil, "", []string{src}, errMsg, "song", playlistLink)
 	})
 
-	// Inspect (保持不变)
 	api.GET("/inspect", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
@@ -665,7 +707,6 @@ func Start(port string, shouldOpenBrowser bool) {
 		})
 	})
 
-	// Switch Source
 	api.GET("/switch_source", func(c *gin.Context) {
 		name := strings.TrimSpace(c.Query("name"))
 		artist := strings.TrimSpace(c.Query("artist"))
@@ -782,7 +823,6 @@ func Start(port string, shouldOpenBrowser bool) {
 			return
 		}
 
-		// 直接使用库中返回的 Link
 		c.JSON(200, gin.H{
 			"id":       selected.ID,
 			"name":     selected.Name,
@@ -796,7 +836,6 @@ func Start(port string, shouldOpenBrowser bool) {
 		})
 	})
 
-	// Download Logic (保持不变)
 	api.GET("/download", func(c *gin.Context) {
 		id := c.Query("id")
 		source := c.Query("source")
@@ -874,7 +913,7 @@ func Start(port string, shouldOpenBrowser bool) {
 		defer resp.Body.Close()
 
 		for k, v := range resp.Header {
-			if k != "Transfer-Encoding" && k != "Date" {
+			if k != "Transfer-Encoding" && k != "Date" && k != "Access-Control-Allow-Origin" {
 				c.Writer.Header()[k] = v
 			}
 		}
@@ -934,26 +973,146 @@ func Start(port string, shouldOpenBrowser bool) {
 		c.String(200, "[00:00.00] 暂无歌词")
 	})
 
-	urlStr := "http://localhost:" + port + RoutePrefix
+	// --- 视频生成模块 API 路由集成 ---
+	videoApi := api.Group("/videogen")
 
-	// 初始化 VideoGen 前端脚本与 API 路由
-	// 将内部的下载与歌词回调适配为 videogen.Init 需要的函数签名
-	videogen.Init(r, RoutePrefix,
-		func(source, id string) (string, error) {
-			fn := getDownloadFunc(source)
-			if fn == nil {
-				return "", fmt.Errorf("no support for source: %s", source)
-			}
-			return fn(&model.Song{ID: id, Source: source})
-		},
-		func(source, id string) (string, error) {
-			fn := getLyricFunc(source)
-			if fn == nil {
-				return "", nil
-			}
-			return fn(&model.Song{ID: id, Source: source})
-		},
-	)
+	// 1. 初始化渲染会话
+	videoApi.POST("/init", func(c *gin.Context) {
+		var req struct {
+			ID     string `json:"id"`
+			Source string `json:"source"`
+		}
+		if c.ShouldBindJSON(&req) != nil {
+			c.JSON(400, gin.H{"error": "Args error"})
+			return
+		}
+
+		sessionID := fmt.Sprintf("%s_%s_%d", req.Source, req.ID, time.Now().Unix())
+		tempDir, _ := os.MkdirTemp("", "vg_render_"+sessionID+"_*")
+
+		fn := getDownloadFunc(req.Source)
+		if fn == nil {
+			c.JSON(500, gin.H{"error": "Source not supported"})
+			return
+		}
+		audioUrl, err := fn(&model.Song{ID: req.ID, Source: req.Source})
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Audio download failed"})
+			return
+		}
+
+		audioPath := filepath.Join(tempDir, "audio.mp3")
+		
+		// 下载音频到本地临时目录
+		reqHttp, _ := buildSourceRequest("GET", audioUrl, req.Source, "")
+		client := &http.Client{}
+		resp, err := client.Do(reqHttp)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Save audio failed"})
+			return
+		}
+		defer resp.Body.Close()
+		out, _ := os.Create(audioPath)
+		io.Copy(out, resp.Body)
+		out.Close()
+
+		sess := &RenderSession{
+			ID:        sessionID,
+			Dir:       tempDir,
+			AudioPath: audioPath,
+		}
+
+		sessMu.Lock()
+		sessions[sessionID] = sess
+		sessMu.Unlock()
+
+		// 返回音频直链供前端分析使用，走本站代理避免跨域
+		proxyAudioUrl := fmt.Sprintf("%s/download?id=%s&source=%s", RoutePrefix, url.QueryEscape(req.ID), req.Source)
+		c.JSON(200, gin.H{"session_id": sessionID, "audio_url": proxyAudioUrl})
+	})
+
+	// 2. 接收前端渲染的帧
+	videoApi.POST("/frame", func(c *gin.Context) {
+		var req struct {
+			SessionID string   `json:"session_id"`
+			Frames    []string `json:"frames"`
+			StartIdx  int      `json:"start_idx"`
+		}
+		if c.ShouldBindJSON(&req) != nil {
+			c.JSON(400, gin.H{"error": "Bad request"})
+			return
+		}
+
+		sessMu.Lock()
+		sess, ok := sessions[req.SessionID]
+		sessMu.Unlock()
+		if !ok {
+			c.JSON(404, gin.H{"error": "Session not found"})
+			return
+		}
+
+		sess.Mutex.Lock()
+		defer sess.Mutex.Unlock()
+
+		for i, dataURI := range req.Frames {
+			frameNum := req.StartIdx + i
+			fileName := filepath.Join(sess.Dir, fmt.Sprintf("frame_%05d.jpg", frameNum))
+			saveBase64(dataURI, fileName)
+		}
+		sess.Total += len(req.Frames)
+
+		c.JSON(200, gin.H{"status": "ok", "received": len(req.Frames)})
+	})
+
+	// 3. 完成渲染并调用 FFmpeg
+	videoApi.POST("/finish", func(c *gin.Context) {
+		var req struct {
+			SessionID string `json:"session_id"`
+			Name      string `json:"name"`
+		}
+		c.ShouldBindJSON(&req)
+
+		sessMu.Lock()
+		sess, ok := sessions[req.SessionID]
+		delete(sessions, req.SessionID)
+		sessMu.Unlock()
+
+		if !ok {
+			c.JSON(404, gin.H{"error": "Session not found"})
+			return
+		}
+
+		absVideoDir, _ := filepath.Abs(videoDir)
+		outName := fmt.Sprintf("render_%s_%d.mp4", sess.ID, time.Now().Unix())
+		outPath := filepath.Join(absVideoDir, outName)
+
+		cmd := exec.Command("ffmpeg",
+			"-y",
+			"-framerate", "30",
+			"-i", filepath.Join(sess.Dir, "frame_%05d.jpg"),
+			"-i", sess.AudioPath,
+			"-c:v", "libx264",
+			"-preset", "ultrafast",
+			"-c:a", "aac",
+			"-b:a", "320k",
+			"-pix_fmt", "yuv420p",
+			"-shortest",
+			outPath,
+		)
+
+		output, err := cmd.CombinedOutput()
+		os.RemoveAll(sess.Dir) // 立即清理
+
+		if err != nil {
+			fmt.Println("FFmpeg Error:", string(output))
+			c.JSON(500, gin.H{"error": "Render failed: " + err.Error()})
+			return
+		}
+
+		c.JSON(200, gin.H{"url": "/videos/" + outName})
+	})
+
+	urlStr := "http://localhost:" + port + RoutePrefix
 	fmt.Printf("Web started at %s\n", urlStr)
 	if shouldOpenBrowser {
 		go func() { time.Sleep(500 * time.Millisecond); openBrowser(urlStr) }()
@@ -961,7 +1120,6 @@ func Start(port string, shouldOpenBrowser bool) {
 	r.Run(":" + port)
 }
 
-// [修改] 增加 playlistLink 参数，传递给模板
 func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist, q string, selected []string, errMsg string, searchType string, playlistLink string) {
 	allSrc := core.GetAllSourceNames()
 	desc := make(map[string]string)
@@ -986,14 +1144,9 @@ func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist,
 		"SearchType":         searchType,
 		"PlaylistSupported":  playlistSupported,
 		"Root":               RoutePrefix,
-		"PlaylistLink":       playlistLink, // 传递当前歌单的原始链接
+		"PlaylistLink":       playlistLink,
 	})
 }
-
-// (其余辅助函数 formatSize, setDownloadHeader, validatePlayable, isDurationClose, intAbs, calcSongSimilarity... 保持不变)
-// ------------------------------------------
-// 为了保证完整性，以下是其余辅助代码
-// ------------------------------------------
 
 func formatSize(s int64) string {
 	if s <= 0 {
