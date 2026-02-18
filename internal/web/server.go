@@ -35,6 +35,8 @@ import (
 	"github.com/guohuiyuan/music-lib/qq"
 	"github.com/guohuiyuan/music-lib/soda"
 	"github.com/guohuiyuan/music-lib/utils"
+
+	videogen "github.com/guohuiyuan/music-video-gen"
 )
 
 //go:embed templates/*
@@ -402,6 +404,11 @@ func Start(port string, shouldOpenBrowser bool) {
 	// 注册模板
 	tmpl := template.Must(template.New("").ParseFS(templateFS, "templates/*.html"))
 	r.SetHTMLTemplate(tmpl)
+
+	// 访问根目录 / 时，自动重定向到 /music
+	r.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, RoutePrefix)
+	})
 
 	// Create route group for prefix support
 	api := r.Group(RoutePrefix)
@@ -928,6 +935,25 @@ func Start(port string, shouldOpenBrowser bool) {
 	})
 
 	urlStr := "http://localhost:" + port + RoutePrefix
+
+	// 初始化 VideoGen 前端脚本与 API 路由
+	// 将内部的下载与歌词回调适配为 videogen.Init 需要的函数签名
+	videogen.Init(r, RoutePrefix,
+		func(source, id string) (string, error) {
+			fn := getDownloadFunc(source)
+			if fn == nil {
+				return "", fmt.Errorf("no support for source: %s", source)
+			}
+			return fn(&model.Song{ID: id, Source: source})
+		},
+		func(source, id string) (string, error) {
+			fn := getLyricFunc(source)
+			if fn == nil {
+				return "", nil
+			}
+			return fn(&model.Song{ID: id, Source: source})
+		},
+	)
 	fmt.Printf("Web started at %s\n", urlStr)
 	if shouldOpenBrowser {
 		go func() { time.Sleep(500 * time.Millisecond); openBrowser(urlStr) }()

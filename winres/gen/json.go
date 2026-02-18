@@ -79,16 +79,16 @@ func main() {
 		panic(err)
 	}
 	defer f.Close()
-	
+
 	// 获取版本信息
 	version := "v1.0.0"
-	
+
 	// 获取 git 提交计数
 	commitcnt := strings.Builder{}
 	commitcntcmd := exec.Command("git", "rev-list", "--count", "HEAD")
 	commitcntcmd.Stdout = &commitcnt
 	err = commitcntcmd.Run()
-	
+
 	var fv string
 	if err != nil {
 		// 如果 git 命令失败，使用默认版本
@@ -97,9 +97,9 @@ func main() {
 		commitCount := strings.TrimSpace(commitcnt.String())
 		fv = "1.0.0." + commitCount
 	}
-	
+
 	copyright := "© 2026 guohuiyuan. All Rights Reserved."
-	
+
 	_, err = fmt.Fprintf(f, js, fv, fv, version, time.Now().Format(timeformat), fv, copyright, version)
 	if err != nil {
 		panic(err)
