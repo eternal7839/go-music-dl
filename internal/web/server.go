@@ -403,6 +403,11 @@ func Start(port string, shouldOpenBrowser bool) {
 	tmpl := template.Must(template.New("").ParseFS(templateFS, "templates/*.html"))
 	r.SetHTMLTemplate(tmpl)
 
+	// 访问根目录 / 时，自动重定向到 /music
+	r.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusMovedPermanently, RoutePrefix)
+	})
+
 	// Create route group for prefix support
 	api := r.Group(RoutePrefix)
 
