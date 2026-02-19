@@ -172,7 +172,7 @@ const ap = new APlayer({
     container: document.getElementById('aplayer'),
     fixed: true, 
     autoplay: false,  // 【修改】：初始化时保持暂停状态
-    theme: '#667eea',
+    theme: '#10b981',
     loop: 'all', 
     order: 'list', 
     preload: 'auto', 
@@ -495,7 +495,7 @@ function playAllAndJumpTo(btn) {
             url: `${API_ROOT}/download?id=${encodeURIComponent(ds.id)}&source=${ds.source}&name=${encodeURIComponent(ds.name)}&artist=${encodeURIComponent(ds.artist)}`,
             cover: coverUrl,
             lrc: `${API_ROOT}/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
-            theme: '#667eea',
+            theme: '#10b981',
             custom_id: ds.id,
             source: ds.source
         });
@@ -619,7 +619,7 @@ function getSelectedSongs() {
                 url: `${API_ROOT}/download?id=${encodeURIComponent(ds.id)}&source=${ds.source}&name=${encodeURIComponent(ds.name)}&artist=${encodeURIComponent(ds.artist)}`,
                 cover: coverUrl,
                 lrc: `${API_ROOT}/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
-                theme: '#667eea',
+                theme: '#10b981',
                 custom_id: ds.id
             });
         }
