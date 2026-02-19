@@ -132,7 +132,7 @@ func buildSourceRequest(method, urlStr, source, rangeHeader string) (*http.Reque
 	return req, nil
 }
 
-// --- 视频生成状态管理 (合并自原 videogen 库) ---
+// --- 视频生成状态管理 ---
 type RenderSession struct {
 	ID        string
 	Dir       string
@@ -146,7 +146,6 @@ var (
 	sessMu   sync.Mutex
 )
 
-// 清理旧文件的辅助函数
 func cleanupOldFiles(dir string, maxAge time.Duration) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -457,7 +456,6 @@ func Start(port string, shouldOpenBrowser bool) {
 		c.Redirect(http.StatusMovedPermanently, RoutePrefix)
 	})
 
-	// 初始化视频生成目录和清理任务
 	videoDir := "video_output"
 	os.MkdirAll(videoDir, 0755)
 	go func() {
@@ -471,9 +469,7 @@ func Start(port string, shouldOpenBrowser bool) {
 	api := r.Group(RoutePrefix)
 
 	api.GET("/icon.png", func(c *gin.Context) { c.FileFromFS("templates/icon.png", http.FS(templateFS)) })
-	// [修改] 直接从模板加载新的 JS 文件
 	api.GET("/videogen.js", func(c *gin.Context) { c.FileFromFS("templates/videogen.js", http.FS(templateFS)) })
-	// [新增] 注册 app.js 的路由
 	api.GET("/app.js", func(c *gin.Context) { c.FileFromFS("templates/app.js", http.FS(templateFS)) })
 	
 	api.GET("/render", func(c *gin.Context) {
@@ -976,45 +972,76 @@ func Start(port string, shouldOpenBrowser bool) {
 	// --- 视频生成模块 API 路由集成 ---
 	videoApi := api.Group("/videogen")
 
-	// 1. 初始化渲染会话
+	// 1. 初始化渲染会话 (已支持前端本地上传文件直传)
 	videoApi.POST("/init", func(c *gin.Context) {
-		var req struct {
-			ID     string `json:"id"`
-			Source string `json:"source"`
-		}
-		if c.ShouldBindJSON(&req) != nil {
-			c.JSON(400, gin.H{"error": "Args error"})
-			return
+		var id, source string
+		var hasCustomAudio bool
+
+		// 判断请求格式：如果带有本地音频文件，则是 FormData
+		if strings.HasPrefix(c.GetHeader("Content-Type"), "multipart/form-data") {
+			id = c.PostForm("id")
+			source = c.PostForm("source")
+			hasCustomAudio = true
+		} else {
+			// 如果没有传本地文件，还是走原来的 JSON 解析逻辑
+			var req struct {
+				ID     string `json:"id"`
+				Source string `json:"source"`
+			}
+			if c.ShouldBindJSON(&req) != nil {
+				c.JSON(400, gin.H{"error": "Args error"})
+				return
+			}
+			id = req.ID
+			source = req.Source
 		}
 
-		sessionID := fmt.Sprintf("%s_%s_%d", req.Source, req.ID, time.Now().Unix())
+		sessionID := fmt.Sprintf("%s_%s_%d", source, id, time.Now().Unix())
 		tempDir, _ := os.MkdirTemp("", "vg_render_"+sessionID+"_*")
-
-		fn := getDownloadFunc(req.Source)
-		if fn == nil {
-			c.JSON(500, gin.H{"error": "Source not supported"})
-			return
-		}
-		audioUrl, err := fn(&model.Song{ID: req.ID, Source: req.Source})
-		if err != nil {
-			c.JSON(500, gin.H{"error": "Audio download failed"})
-			return
-		}
-
 		audioPath := filepath.Join(tempDir, "audio.mp3")
-		
-		// 下载音频到本地临时目录
-		reqHttp, _ := buildSourceRequest("GET", audioUrl, req.Source, "")
-		client := &http.Client{}
-		resp, err := client.Do(reqHttp)
-		if err != nil {
-			c.JSON(500, gin.H{"error": "Save audio failed"})
-			return
+
+		var proxyAudioUrl string
+
+		if hasCustomAudio {
+			// 接收前端传过来的自定义本地音频文件，并直接保存到服务器作为底层音轨
+			file, err := c.FormFile("audio_file")
+			if err != nil {
+				c.JSON(400, gin.H{"error": "Failed to receive custom audio"})
+				return
+			}
+			if err := c.SaveUploadedFile(file, audioPath); err != nil {
+				c.JSON(500, gin.H{"error": "Failed to save custom audio"})
+				return
+			}
+			// 既然本地已有，前端不需要代理链接去下载了
+			proxyAudioUrl = "" 
+		} else {
+			// 原版逻辑：通过 ID 去云端源站扒原始音乐
+			fn := getDownloadFunc(source)
+			if fn == nil {
+				c.JSON(500, gin.H{"error": "Source not supported"})
+				return
+			}
+			audioUrl, err := fn(&model.Song{ID: id, Source: source})
+			if err != nil {
+				c.JSON(500, gin.H{"error": "Audio download failed"})
+				return
+			}
+
+			reqHttp, _ := buildSourceRequest("GET", audioUrl, source, "")
+			client := &http.Client{}
+			resp, err := client.Do(reqHttp)
+			if err != nil {
+				c.JSON(500, gin.H{"error": "Save audio failed"})
+				return
+			}
+			defer resp.Body.Close()
+			out, _ := os.Create(audioPath)
+			io.Copy(out, resp.Body)
+			out.Close()
+
+			proxyAudioUrl = fmt.Sprintf("%s/download?id=%s&source=%s", RoutePrefix, url.QueryEscape(id), source)
 		}
-		defer resp.Body.Close()
-		out, _ := os.Create(audioPath)
-		io.Copy(out, resp.Body)
-		out.Close()
 
 		sess := &RenderSession{
 			ID:        sessionID,
@@ -1026,12 +1053,9 @@ func Start(port string, shouldOpenBrowser bool) {
 		sessions[sessionID] = sess
 		sessMu.Unlock()
 
-		// 返回音频直链供前端分析使用，走本站代理避免跨域
-		proxyAudioUrl := fmt.Sprintf("%s/download?id=%s&source=%s", RoutePrefix, url.QueryEscape(req.ID), req.Source)
 		c.JSON(200, gin.H{"session_id": sessionID, "audio_url": proxyAudioUrl})
 	})
 
-	// 2. 接收前端渲染的帧
 	videoApi.POST("/frame", func(c *gin.Context) {
 		var req struct {
 			SessionID string   `json:"session_id"`
@@ -1064,7 +1088,6 @@ func Start(port string, shouldOpenBrowser bool) {
 		c.JSON(200, gin.H{"status": "ok", "received": len(req.Frames)})
 	})
 
-	// 3. 完成渲染并调用 FFmpeg
 	videoApi.POST("/finish", func(c *gin.Context) {
 		var req struct {
 			SessionID string `json:"session_id"`
@@ -1101,7 +1124,7 @@ func Start(port string, shouldOpenBrowser bool) {
 		)
 
 		output, err := cmd.CombinedOutput()
-		os.RemoveAll(sess.Dir) // 立即清理
+		os.RemoveAll(sess.Dir) 
 
 		if err != nil {
 			fmt.Println("FFmpeg Error:", string(output))

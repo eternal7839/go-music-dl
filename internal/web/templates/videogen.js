@@ -1,8 +1,7 @@
 (function () {
     // =================================================================
-    // 共享核心算法：确保网页实时播放与离线视频渲染的效果 100% 一致
+    // 共享核心算法
     // =================================================================
-    
     const FFT = {
         windowed: null, mags: null, previousMags: null,
         reset: function() { this.previousMags = null; },
@@ -33,8 +32,8 @@
                 mag = smoothing * this.previousMags[i] + (1 - smoothing) * mag;
                 this.previousMags[i] = mag;
                 let db = 20 * Math.log10(mag + 1e-6);
-                // 降低灵敏度：将映射区间从 70 拉宽到 90，使高响度不易饱和
-                let val = (db + 100) * (255 / 90);
+                const minDb = -100, maxDb = -10;
+                let val = (db - minDb) * (255 / (maxDb - minDb)); 
                 if(val < 0) val = 0; if(val > 255) val = 255;
                 this.mags[i] = val;
             }
@@ -43,51 +42,34 @@
     };
 
     function processVisualizerBars(freqData) {
-        const barsCount = 180; 
-        const barHeights = [];
+        const barsCount = 180, barHeights = [];
+        const maxIdx = Math.floor(freqData.length * 0.8), minIdx = 1; 
         for(let i=0; i<barsCount; i++) {
-            const minIdx = 1, maxIdx = freqData.length / 2;
             const logRange = Math.log(maxIdx / minIdx);
             const idx = minIdx * Math.exp(logRange * (i / barsCount));
             const lower = Math.floor(idx), upper = Math.ceil(idx), frac = idx - lower;
             let val = (freqData[lower] || 0) * (1 - frac) + (freqData[upper] || 0) * frac;
-            
-            const weight = 1 + (i / barsCount) * 1.5;
-            val *= weight;
+            val *= 1 + (i / barsCount) * 0.8;
             if (val > 255) val = 255;
-
-            const threshold = 170; 
             let h = 2; 
-            if (val > threshold) {
-                let active = (val - threshold) / (255 - threshold);
-                if (active > 1.0) active = 1.0;
-                h += Math.pow(active, 3.0) * 33; 
-            }
-            if (h > 35) h = 35; 
+            if (val > 0) h += Math.pow(val / 255.0, 2.5) * 40; 
             barHeights.push(h);
         }
         return { heights: barHeights };
     }
 
     function drawVisualizerRings(ctx, cx, cy, radius, heights) {
-        ctx.save();
-        ctx.translate(cx, cy);
+        ctx.save(); ctx.translate(cx, cy);
         const barsCount = heights.length, barWidth = 1.5, halfWidth = barWidth / 2;
         for (let i = 0; i < barsCount; i++) {
             ctx.save();
-            const angle = (Math.PI * 2 / barsCount) * i - Math.PI / 2;
-            ctx.rotate(angle);
-            const h = heights[i] || 2;
-            const hue = (i / barsCount) * 360; 
+            ctx.rotate((Math.PI * 2 / barsCount) * i - Math.PI / 2);
+            const h = heights[i] || 2, hue = (i / barsCount) * 360; 
             ctx.fillStyle = `hsla(${hue}, 100%, 65%, 0.9)`;
             ctx.beginPath();
-            if (ctx.roundRect) {
-                ctx.roundRect(-halfWidth, -radius - h, barWidth, h, 0.5);
-            } else {
-                ctx.rect(-halfWidth, -radius - h, barWidth, h);
-            }
-            ctx.fill();
-            ctx.restore(); 
+            if (ctx.roundRect) ctx.roundRect(-halfWidth, -radius - h, barWidth, h, 0.5);
+            else ctx.rect(-halfWidth, -radius - h, barWidth, h);
+            ctx.fill(); ctx.restore(); 
         }
         ctx.restore(); 
     }
@@ -110,23 +92,45 @@
             };
 
             try {
-                setStatus("正在初始化...", "请求云端处理通道", 5);
-                const initRes = await fetch(`${apiRoot}/videogen/init`, {
-                    method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ id: data.id, source: data.source }),
-                }).then((r) => r.json());
+                let initRes;
+                // 新增：如果前端传来了自定义的音乐 Blob 文件，走 FormData 上传逻辑
+                if (data.customAudioFile) {
+                    setStatus("正在初始化...", "正在向服务器投递您的本地音乐...", 5);
+                    const fd = new FormData();
+                    fd.append("id", data.id);
+                    fd.append("source", data.source);
+                    fd.append("audio_file", data.customAudioFile);
+                    
+                    initRes = await fetch(`${apiRoot}/videogen/init`, {
+                        method: "POST",
+                        body: fd
+                    }).then(r => r.json());
+                } else {
+                    // 原版逻辑：仅传 ID 让服务器自己下
+                    setStatus("正在初始化...", "请求云端处理通道", 5);
+                    initRes = await fetch(`${apiRoot}/videogen/init`, {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id: data.id, source: data.source }),
+                    }).then((r) => r.json());
+                }
                 
                 if (initRes.error) throw new Error(initRes.error);
                 
-                setStatus("下载与解码音频...", "可能需要一些时间，请耐心等待", 15);
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const audioBuffer = await fetch(initRes.audio_url)
-                    .then((r) => r.arrayBuffer())
-                    .then((arr) => audioCtx.decodeAudioData(arr));
+                let audioBuffer;
+
+                if (data.customAudioFile) {
+                    setStatus("解码音频...", "解析本地高清音频数据...", 15);
+                    const arr = await data.customAudioFile.arrayBuffer();
+                    audioBuffer = await audioCtx.decodeAudioData(arr);
+                } else {
+                    setStatus("下载与解码音频...", "可能需要一些时间，请耐心等待", 15);
+                    const arr = await fetch(initRes.audio_url).then((r) => r.arrayBuffer());
+                    audioBuffer = await audioCtx.decodeAudioData(arr);
+                }
                     
                 setStatus("加载视觉资源...", "准备 1080P 超清渲染画板", 25);
                 
-                // 1080P 设置
                 const logicalW = 1280, logicalH = 720, scaleFactor = 1.5; 
                 const width = logicalW * scaleFactor, height = logicalH * scaleFactor;
                 
@@ -186,25 +190,20 @@
                     const time = frameIdx / fps;
                     if (data.isVideoBg) await seekVideo(time);
           
-                    const startSample = frameIdx * samplesPerFrame;
-                    // 使用更大的 FFT 窗口以获得更好的低频分辨率（1024 或 2048 可选）
-                    const fftSize = 1024;
-                    const sliceEnd = Math.min(startSample + fftSize, rawData.length);
-                    let pcmSlice = rawData.slice(startSample, sliceEnd);
-                    // 如果到达音频末尾、长度不足，则补零以保证 FFT 窗口一致
+                    const fftSize = 2048; 
+                    const startSample = Math.max(0, Math.floor((frameIdx * samplesPerFrame) - (fftSize / 4))); 
+                    
+                    let pcmSlice = rawData.slice(startSample, startSample + fftSize);
                     if (pcmSlice.length < fftSize) {
                         const padded = new Float32Array(fftSize);
-                        padded.set(pcmSlice);
-                        pcmSlice = padded;
+                        padded.set(pcmSlice); pcmSlice = padded;
                     }
-                    // 传入 0.4 平滑度参数，确保动画与实时播放同步
-                    const freqData = FFT.getFrequencyData(pcmSlice, fftSize, 0.4);
+                    
+                    const freqData = FFT.getFrequencyData(pcmSlice, fftSize, 0.65);
                     const visResult = processVisualizerBars(freqData);
           
                     ctx.clearRect(0, 0, width, height); 
-                    ctx.save();
-                    // 放大到 1080P
-                    ctx.scale(scaleFactor, scaleFactor);
+                    ctx.save(); ctx.scale(scaleFactor, scaleFactor);
                     
                     let mw = data.isVideoBg ? bgMedia.videoWidth : bgMedia.width;
                     let mh = data.isVideoBg ? bgMedia.videoHeight : bgMedia.height;
@@ -226,8 +225,7 @@
                     const cx = 320, cy = logicalH / 2, discRadius = 200, barBaseRadius = discRadius + 2; 
                     drawVisualizerRings(ctx, cx, cy, barBaseRadius, visResult.heights);
         
-                    ctx.save();
-                    ctx.translate(cx, cy);
+                    ctx.save(); ctx.translate(cx, cy);
                     ctx.beginPath(); ctx.arc(0, 0, discRadius, 0, Math.PI * 2); ctx.fillStyle = "#111"; ctx.fill();
                     ctx.strokeStyle = "rgba(255,255,255,0.1)"; ctx.lineWidth = 4; ctx.stroke();
                     
@@ -239,23 +237,70 @@
                     ctx.drawImage(bgMedia, 0, 0, mw, mh, -coverRadius, -coverRadius, coverRadius * 2, coverRadius * 2); ctx.restore();
                     ctx.restore(); 
           
-                    const lx = 700, ly = logicalH / 2;
+                    const lx = 600, baseLy = logicalH / 2, maxWidth = logicalW - lx - 40, gap = 20; 
                     let activeIdx = -1;
                     for (let i = 0; i < data.lyricRaw.length; i++) { if (time >= data.lyricRaw[i].time) activeIdx = i; else break; }
-          
+
                     ctx.textAlign = "left"; ctx.textBaseline = "middle";
+                    const wrapText = (text, maxW) => {
+                        const lines = []; let currentLine = ''; const chars = Array.from(text);
+                        for (let i = 0; i < chars.length; i++) {
+                            let testLine = currentLine + chars[i];
+                            if (ctx.measureText(testLine).width > maxW && currentLine.length > 0) {
+                                if (/[a-zA-Z]/.test(chars[i]) && currentLine.includes(' ')) {
+                                    let lastSpace = currentLine.lastIndexOf(' ');
+                                    lines.push(currentLine.substring(0, lastSpace));
+                                    currentLine = currentLine.substring(lastSpace + 1) + chars[i];
+                                } else { lines.push(currentLine); currentLine = chars[i]; }
+                            } else { currentLine = testLine; }
+                        }
+                        if (currentLine) lines.push(currentLine);
+                        return lines;
+                    };
+
+                    let lyricsBlocks = []; let activeBlockIndex = -1;
                     for (let offset = -4; offset <= 4; offset++) {
-                      const idx = activeIdx + offset;
-                      if (idx >= 0 && idx < data.lyricRaw.length) {
-                        const isCurrent = offset === 0;
-                        ctx.font = isCurrent ? "bold 36px sans-serif" : "600 26px sans-serif";
-                        ctx.fillStyle = isCurrent ? "#fff" : "rgba(255,255,255,0.85)";
-                        ctx.shadowColor = "rgba(0,0,0,0.9)";
-                        ctx.shadowBlur = isCurrent ? 6 : 4; 
-                        ctx.shadowOffsetX = isCurrent ? 2 : 1; 
-                        ctx.shadowOffsetY = isCurrent ? 2 : 1;
-                        ctx.fillText(data.lyricRaw[idx].text, lx, ly + offset * 65);
-                      }
+                        const idx = activeIdx + offset;
+                        if (idx >= 0 && idx < data.lyricRaw.length) {
+                            const isCurrent = offset === 0;
+                            ctx.font = isCurrent ? "bold 36px sans-serif" : "600 26px sans-serif";
+                            const lineHeight = isCurrent ? 48 : 34;
+                            const textLines = wrapText(data.lyricRaw[idx].text, maxWidth);
+                            const blockHeight = (textLines.length - 1) * lineHeight; 
+                            
+                            lyricsBlocks.push({
+                                offset, textLines, isCurrent, lineHeight, blockHeight,
+                                font: ctx.font, color: isCurrent ? "#fff" : "rgba(255,255,255,0.85)",
+                                shadowBlur: isCurrent ? 6 : 4, shadowOffset: isCurrent ? 2 : 1
+                            });
+                            if (isCurrent) activeBlockIndex = lyricsBlocks.length - 1;
+                        }
+                    }
+
+                    if (activeBlockIndex !== -1) {
+                        const activeBlock = lyricsBlocks[activeBlockIndex];
+                        activeBlock.startY = baseLy - (activeBlock.blockHeight / 2);
+                        for (let i = activeBlockIndex + 1; i < lyricsBlocks.length; i++) {
+                            const prev = lyricsBlocks[i-1];
+                            lyricsBlocks[i].startY = prev.startY + prev.blockHeight + gap + (prev.lineHeight / 2) + (lyricsBlocks[i].lineHeight / 2);
+                        }
+                        for (let i = activeBlockIndex - 1; i >= 0; i--) {
+                            const next = lyricsBlocks[i+1];
+                            lyricsBlocks[i].startY = next.startY - lyricsBlocks[i].blockHeight - gap - (next.lineHeight / 2) - (lyricsBlocks[i].lineHeight / 2);
+                        }
+                        for (let block of lyricsBlocks) {
+                            ctx.font = block.font; ctx.fillStyle = block.color;
+                            ctx.shadowColor = "rgba(0,0,0,0.9)"; ctx.shadowBlur = block.shadowBlur;
+                            ctx.shadowOffsetX = block.shadowOffset; ctx.shadowOffsetY = block.shadowOffset;
+                            let lineY = block.startY;
+                            for (let lineText of block.textLines) {
+                                let alpha = 1;
+                                const dist = Math.abs(lineY - baseLy);
+                                if (dist > 230) alpha = Math.max(0, 1 - (dist - 230) / 70); 
+                                if (alpha > 0) { ctx.globalAlpha = alpha; ctx.fillText(lineText, lx, lineY); ctx.globalAlpha = 1.0; }
+                                lineY += block.lineHeight;
+                            }
+                        }
                     }
                     
                     ctx.font = "bold 26px sans-serif"; ctx.fillStyle = "#fff"; ctx.textAlign = "center";
@@ -266,7 +311,6 @@
                     
                     ctx.restore(); 
                     
-                    // 将高清帧绘制到屏幕的小预览窗上
                     previewCtx.clearRect(0,0,width,height);
                     previewCtx.drawImage(canvas, 0, 0);
                 };
@@ -308,23 +352,25 @@
         }
         
         runOfflineRender(window.renderData);
-        return; // 终止 Worker 中的后续 UI 初始化
+        return; 
     }
 
-
     // =================================================================
-    // 原主页面 UI 逻辑 (网页播放界面)
+    // 网页主播放界面
     // =================================================================
     window.VideoGen = {
       data: null, customVisual: null, lyricTimes: [], lyricRaw: [], lastActiveIndex: -1,
-      audioCtx: null, analyser: null, sourceNode: null, isPlaying: false,
-      rtCanvas: null, rtCtx: null, animationId: null, isVideoBg: false,
+      audioCtx: null, analyser: null, sourceNode: null, localSourceNode: null, 
+      isPlaying: false, rtCanvas: null, rtCtx: null, animationId: null, isVideoBg: false,
       resizeObserver: null, isDraggingProgress: false,
+      
+      // 本地音频支持
+      isLocalAudio: false, localAudio: null, _currentAudioEl: null, _currentLocalAudioFile: null,
 
       apTimeHandler: null, apPlayHandler: null, apPauseHandler: null, apEndHandler: null,
   
       formatTime: function(s) {
-          if (isNaN(s)) return "00:00";
+          if (isNaN(s) || !isFinite(s)) return "00:00";
           const m = Math.floor(s / 60), sec = Math.floor(s % 60);
           return `${m < 10 ? '0' : ''}${m}:${sec < 10 ? '0' : ''}${sec}`;
       },
@@ -334,6 +380,42 @@
           const file = input.files[0], reader = new FileReader();
           reader.onload = (e) => { this.customVisual = e.target.result; this.updateVisuals(this.customVisual, file.type.startsWith("video/")); };
           reader.readAsDataURL(file);
+        }
+        input.value = "";
+      },
+
+      handleAudioSelect: function (input) {
+        if (input.files && input.files[0]) {
+            const file = input.files[0];
+            this._currentLocalAudioFile = file; // 保存文件以便导出时传给服务器
+            if (!this.localAudio) {
+                this.localAudio = document.createElement("audio");
+                this.localAudio.crossOrigin = "anonymous";
+            }
+            this.localAudio.src = URL.createObjectURL(file);
+            this.isLocalAudio = true;
+            
+            const fileName = file.name.replace(/\.[^/.]+$/, "");
+            document.getElementById("vg-title").textContent = fileName;
+            this.data.name = fileName; 
+
+            // [新增]：更换本地歌曲时，自动将作者置空
+            document.getElementById("vg-artist").textContent = "";
+            this.data.artist = "";
+
+            if (window.ap && !window.ap.audio.paused) window.ap.pause();
+            
+            this.attachEvents(this.localAudio);
+            this.localAudio.play();
+        }
+        input.value = "";
+      },
+
+      handleLyricSelect: function(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = (e) => { this.parseAndSetLyrics(e.target.result); };
+            reader.readAsText(input.files[0]);
         }
         input.value = "";
       },
@@ -352,30 +434,19 @@
         }
       },
 
-      open: async function (songData) {
-        this.data = songData; this.customVisual = null;
-        const modal = document.getElementById("vg-modal");
-        this.updateVisuals(songData.cover || "https://via.placeholder.com/600", false);
-        document.getElementById("vg-title").textContent = songData.name;
-        document.getElementById("vg-artist").textContent = songData.artist;
+      attachEvents: function(audioEl) {
+        if (!audioEl) return;
+        this.detachEvents(this._currentAudioEl);
+        this._currentAudioEl = audioEl;
 
-        if (window.ap && window.ap.audio) {
-            this.isPlaying = (window.currentPlayingId === songData.id) && !window.ap.audio.paused;
-            this.updatePlayUI();
-            
-            if (this.apTimeHandler) window.ap.audio.removeEventListener('timeupdate', this.apTimeHandler);
-            if (this.apPlayHandler) window.ap.audio.removeEventListener('play', this.apPlayHandler);
-            if (this.apPauseHandler) window.ap.audio.removeEventListener('pause', this.apPauseHandler);
-            if (this.apEndHandler) window.ap.audio.removeEventListener('ended', this.apEndHandler);
-
+        if (!this.apTimeHandler) {
             this.apTimeHandler = () => this.syncLyrics();
             this.apPlayHandler = () => { 
-                if (window.currentPlayingId === this.data.id) {
-                    this.isPlaying = true; this.updatePlayUI(); this.initAudioContext(); this.startRealtimeVisualizer(); 
-                    const b = document.getElementById("vg-bg-video"), c = document.getElementById("vg-cover-video");
-                    if(b?.style.display !== 'none') b.play().catch(()=>{}); if(c?.style.display !== 'none') c.play().catch(()=>{});
-                    document.getElementById("vg-bg-img")?.classList.add("playing");
-                }
+                if (!this.isLocalAudio && window.currentPlayingId !== this.data.id) return;
+                this.isPlaying = true; this.updatePlayUI(); this.initAudioContext(); this.startRealtimeVisualizer(); 
+                const b = document.getElementById("vg-bg-video"), c = document.getElementById("vg-cover-video");
+                if(b?.style.display !== 'none') b.play().catch(()=>{}); if(c?.style.display !== 'none') c.play().catch(()=>{});
+                document.getElementById("vg-bg-img")?.classList.add("playing");
             };
             this.apPauseHandler = () => { 
                 this.isPlaying = false; this.updatePlayUI(); this.stopRealtimeVisualizer(); 
@@ -384,62 +455,92 @@
                 document.getElementById("vg-bg-img")?.classList.remove("playing");
             };
             this.apEndHandler = () => { this.isPlaying = false; this.updatePlayUI(); this.stopRealtimeVisualizer(); };
+        }
 
-            window.ap.audio.addEventListener('timeupdate', this.apTimeHandler);
-            window.ap.audio.addEventListener('play', this.apPlayHandler);
-            window.ap.audio.addEventListener('pause', this.apPauseHandler);
-            window.ap.audio.addEventListener('ended', this.apEndHandler);
+        audioEl.addEventListener('timeupdate', this.apTimeHandler);
+        audioEl.addEventListener('play', this.apPlayHandler);
+        audioEl.addEventListener('pause', this.apPauseHandler);
+        audioEl.addEventListener('ended', this.apEndHandler);
+      },
+
+      detachEvents: function(audioEl) {
+          if (!audioEl) return;
+          audioEl.removeEventListener('timeupdate', this.apTimeHandler);
+          audioEl.removeEventListener('play', this.apPlayHandler);
+          audioEl.removeEventListener('pause', this.apPauseHandler);
+          audioEl.removeEventListener('ended', this.apEndHandler);
+      },
+
+      open: async function (songData) {
+        this.data = songData; this.customVisual = null;
+        this.isLocalAudio = false; this._currentLocalAudioFile = null;
+        if(this.localAudio) { this.localAudio.pause(); this.localAudio.removeAttribute('src'); this.localAudio.load(); }
+
+        const modal = document.getElementById("vg-modal");
+        this.updateVisuals(songData.cover || "https://via.placeholder.com/600", false);
+        document.getElementById("vg-title").textContent = songData.name;
+        document.getElementById("vg-artist").textContent = songData.artist;
+
+        if (window.ap && window.ap.audio) {
+            this.isPlaying = (window.currentPlayingId === songData.id) && !window.ap.audio.paused;
+            this.updatePlayUI();
+            this.attachEvents(window.ap.audio);
         }
         
         const sb = document.getElementById('vg-seek-bar');
         sb.oninput = (e) => {
             this.isDraggingProgress = true;
-            let dur = (window.currentPlayingId === this.data.id && window.ap && window.ap.audio) 
-                      ? window.ap.audio.duration 
-                      : (this.data.duration || 0);
-            if (dur > 0) {
-                const targetTime = (e.target.value / 100) * dur;
-                document.getElementById('vg-time-current').textContent = this.formatTime(targetTime);
+            let audioEl = this.isLocalAudio ? this.localAudio : (window.ap && window.ap.audio);
+            if (audioEl && audioEl.duration > 0) {
+                document.getElementById('vg-time-current').textContent = this.formatTime((e.target.value / 100) * audioEl.duration);
             }
         };
         sb.onchange = (e) => {
             this.isDraggingProgress = false;
-            if (window.currentPlayingId === this.data.id) {
-                if (window.ap && window.ap.audio && window.ap.audio.duration) {
-                    window.ap.seek((e.target.value / 100) * window.ap.audio.duration);
-                    this.syncLyrics();
-                    if (window.ap.audio.paused) window.ap.play();
-                }
+            let targetPercent = e.target.value / 100;
+
+            if (this.isLocalAudio) {
+                if (this.localAudio.duration) this.localAudio.currentTime = targetPercent * this.localAudio.duration;
+                this.syncLyrics();
+                if (this.localAudio.paused) this.localAudio.play();
             } else {
-                if (typeof window.playAllAndJumpToId === 'function') {
-                    window.playAllAndJumpToId(this.data.id);
-                    const onCanPlay = () => {
-                        if (window.ap && window.ap.audio && window.ap.audio.duration) {
-                            window.ap.seek((e.target.value / 100) * window.ap.audio.duration);
-                        }
-                        window.ap.audio.removeEventListener('canplay', onCanPlay);
-                    };
-                    window.ap.audio.addEventListener('canplay', onCanPlay);
+                if (window.currentPlayingId === this.data.id) {
+                    if (window.ap && window.ap.audio && window.ap.audio.duration) {
+                        window.ap.seek(targetPercent * window.ap.audio.duration);
+                        this.syncLyrics();
+                        if (window.ap.audio.paused) window.ap.play();
+                    }
+                } else {
+                    if (typeof window.playAllAndJumpToId === 'function') {
+                        window.playAllAndJumpToId(this.data.id);
+                        const onCanPlay = () => {
+                            if (window.ap && window.ap.audio && window.ap.audio.duration) window.ap.seek(targetPercent * window.ap.audio.duration);
+                            window.ap.audio.removeEventListener('canplay', onCanPlay);
+                        };
+                        window.ap.audio.addEventListener('canplay', onCanPlay);
+                    }
                 }
             }
         };
 
-        this.reset(); this.loadLyrics(songData); modal.style.display = "flex";
-        requestAnimationFrame(() => { modal.classList.add("active"); this.initRealtimeCanvas(); if (this.isPlaying) this.apPlayHandler(); });
+        this.reset(); 
+        
+        fetch(`${window.API_ROOT}/lyric?id=${encodeURIComponent(songData.id)}&source=${songData.source}`)
+            .then(r => r.text())
+            .then(text => this.parseAndSetLyrics(text));
+
+        modal.style.display = "flex";
+        requestAnimationFrame(() => { 
+            modal.classList.add("active"); this.initRealtimeCanvas(); 
+            if (this.isPlaying) this.apPlayHandler(); 
+        });
       },
 
       close: function () {
         this.stopRealtimeVisualizer();
-        if (window.ap && window.ap.audio) {
-            window.ap.audio.removeEventListener('timeupdate', this.apTimeHandler);
-            window.ap.audio.removeEventListener('play', this.apPlayHandler);
-            window.ap.audio.removeEventListener('pause', this.apPauseHandler);
-            window.ap.audio.removeEventListener('ended', this.apEndHandler);
-        }
-        if (this.resizeObserver) {
-            this.resizeObserver.disconnect();
-            this.resizeObserver = null;
-        }
+        this.detachEvents(this._currentAudioEl);
+        if (this.isLocalAudio && this.localAudio) this.localAudio.pause();
+        if (this.resizeObserver) { this.resizeObserver.disconnect(); this.resizeObserver = null; }
         const m = document.getElementById("vg-modal"); m.classList.remove("active");
         setTimeout(() => { m.style.display = "none"; this.reset(); }, 500);
       },
@@ -450,39 +551,40 @@
         document.getElementById("vg-ui-container").classList.remove("vg-rendering-hide");
       },
 
-      loadLyrics: function (song) {
-        const box = document.getElementById("vg-lyrics"); box.innerHTML = '<p style="padding-top:100px; color:rgba(255,255,255,0.8);">Loading...</p>';
+      parseAndSetLyrics: function (text) {
+        const box = document.getElementById("vg-lyrics"); box.innerHTML = "";
         this.lyricTimes = []; this.lyricRaw = [];
-        fetch(`${window.API_ROOT}/lyric?id=${encodeURIComponent(song.id)}&source=${song.source}`).then(r => r.text()).then(text => {
-          box.innerHTML = ""; const lines = text.split("\n"), re = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
-          lines.forEach(line => {
+        const lines = text.split("\n"), re = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
+        
+        lines.forEach(line => {
             const m = line.match(re), c = line.replace(/\[.*?\]/g, "").trim();
             if (m && c) {
-              const t = parseInt(m[1]) * 60 + parseInt(m[2]) + parseInt(m[3]) / (m[3].length === 2 ? 100 : 1000);
-              this.lyricTimes.push({ time: t, content: c }); this.lyricRaw.push({ time: t, text: c });
-              const d = document.createElement("div"); d.className = "vg-line"; d.textContent = c;
-              d.onclick = () => { 
-                  if (window.currentPlayingId === this.data.id) {
-                      if (window.ap && window.ap.audio) {
-                          window.ap.seek(t);
-                          if (window.ap.audio.paused) window.ap.play();
-                      }
-                  } else {
-                      if (typeof window.playAllAndJumpToId === 'function') {
-                          window.playAllAndJumpToId(this.data.id);
-                          const onCanPlay = () => {
-                              if (window.ap && window.ap.audio) window.ap.seek(t);
-                              window.ap.audio.removeEventListener('canplay', onCanPlay);
-                          };
-                          window.ap.audio.addEventListener('canplay', onCanPlay);
-                      }
-                  }
-              };
-              box.appendChild(d);
+                const t = parseInt(m[1]) * 60 + parseInt(m[2]) + parseInt(m[3]) / (m[3].length === 2 ? 100 : 1000);
+                this.lyricTimes.push({ time: t, content: c }); this.lyricRaw.push({ time: t, text: c });
+                const d = document.createElement("div"); d.className = "vg-line"; d.textContent = c;
+                d.onclick = () => { 
+                    if (this.isLocalAudio) {
+                        this.localAudio.currentTime = t;
+                        if (this.localAudio.paused) this.localAudio.play();
+                    } else {
+                        if (window.currentPlayingId === this.data.id) {
+                            if (window.ap && window.ap.audio) { window.ap.seek(t); if (window.ap.audio.paused) window.ap.play(); }
+                        } else {
+                            if (typeof window.playAllAndJumpToId === 'function') {
+                                window.playAllAndJumpToId(this.data.id);
+                                const onCanPlay = () => {
+                                    if (window.ap && window.ap.audio) window.ap.seek(t);
+                                    window.ap.audio.removeEventListener('canplay', onCanPlay);
+                                };
+                                window.ap.audio.addEventListener('canplay', onCanPlay);
+                            }
+                        }
+                    }
+                };
+                box.appendChild(d);
             }
-          });
-          if (this.lyricTimes.length === 0) box.innerHTML = '<p style="padding-top:100px; color:rgba(255,255,255,0.5);">纯音乐 / 无歌词</p>';
         });
+        if (this.lyricTimes.length === 0) box.innerHTML = '<p style="padding-top:100px; color:rgba(255,255,255,0.5);">纯音乐 / 无歌词</p>';
       },
   
       initRealtimeCanvas: function() {
@@ -495,17 +597,33 @@
       initAudioContext: function() {
           if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
           if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
-          if (!this.analyser) { this.analyser = this.audioCtx.createAnalyser(); this.analyser.fftSize = 256; this.analyser.smoothingTimeConstant = 0.65; }
+          if (!this.analyser) { 
+              this.analyser = this.audioCtx.createAnalyser(); 
+              this.analyser.fftSize = 2048; 
+              this.analyser.smoothingTimeConstant = 0.65; 
+          }
       },
       connectAudioSource: function() {
-          if (!window.ap || !window.ap.audio || !this.analyser) return; 
-          if (this.sourceNode) return; 
-          try { this.sourceNode = this.audioCtx.createMediaElementSource(window.ap.audio); this.sourceNode.connect(this.analyser); this.analyser.connect(this.audioCtx.destination); } catch(e) {}
+          if (!this.analyser) return; 
+          try {
+              if (this.isLocalAudio) {
+                  if (!this.localSourceNode && this.localAudio) {
+                      this.localSourceNode = this.audioCtx.createMediaElementSource(this.localAudio);
+                  }
+                  if (this.localSourceNode) this.localSourceNode.connect(this.analyser);
+              } else {
+                  if (!window.ap || !window.ap.audio) return;
+                  if (!this.sourceNode) {
+                      this.sourceNode = this.audioCtx.createMediaElementSource(window.ap.audio);
+                  }
+                  if (this.sourceNode) this.sourceNode.connect(this.analyser);
+              }
+              this.analyser.connect(this.audioCtx.destination);
+          } catch(e) { console.warn("Audio Routing Warning:", e); }
       },
       startRealtimeVisualizer: function() {
           this.initAudioContext(); this.connectAudioSource();
           const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-          
           const animate = () => {
               if (!this.isPlaying) return; this.animationId = requestAnimationFrame(animate);
               this.analyser.getByteFrequencyData(dataArray);
@@ -519,10 +637,10 @@
       },
       stopRealtimeVisualizer: function() { if (this.animationId) cancelAnimationFrame(this.animationId); },
   
-      // 【核心功能】：点击生成视频，打开新窗口进行无感渲染
       startRendering: function () {
         if (!this.data) return;
         
+        // 【关键改动】附加上你本地选择的文件 Blob，给到新开的渲染页面
         window.__vgRenderData = {
             id: this.data.id,
             source: this.data.source,
@@ -530,38 +648,45 @@
             artist: this.data.artist,
             rawCover: this.customVisual || this.data.cover || "https://via.placeholder.com/600",
             isVideoBg: this.isVideoBg,
-            lyricRaw: this.lyricRaw,
+            lyricRaw: this.lyricRaw, 
+            customAudioFile: this.isLocalAudio ? this._currentLocalAudioFile : null,
             apiRoot: window.API_ROOT
         };
 
         const renderWin = window.open(window.API_ROOT + '/render', '_blank');
         if (!renderWin) {
-            alert("渲染页面被浏览器拦截，请允许弹出窗口！");
-            return;
+            alert("渲染页面被浏览器拦截，请允许弹出窗口！"); return;
         }
       },
   
       togglePlay: function () {
-        if (!this.data || !window.ap) return;
-        if (window.currentPlayingId === this.data.id) window.ap.toggle();
-        else if (typeof window.playAllAndJumpToId === 'function') window.playAllAndJumpToId(this.data.id);
+        if (this.isLocalAudio && this.localAudio) {
+            this.localAudio.paused ? this.localAudio.play() : this.localAudio.pause();
+        } else {
+            if (!this.data || !window.ap) return;
+            if (window.currentPlayingId === this.data.id) window.ap.toggle();
+            else if (typeof window.playAllAndJumpToId === 'function') window.playAllAndJumpToId(this.data.id);
+        }
       },
+
       updatePlayUI: function () {
         const i = document.querySelector("#vg-play-toggle i"), m = document.getElementById("vg-modal");
         if (i) i.className = this.isPlaying ? "fa-solid fa-pause" : "fa-solid fa-play";
         if (m) this.isPlaying ? m.classList.add("playing") : m.classList.remove("playing");
       },
+
       syncLyrics: function () {
-        if (!window.ap || !window.ap.audio || window.currentPlayingId !== this.data.id) return;
-        const ct = window.ap.audio.currentTime, dur = window.ap.audio.duration || 0;
+        const audioEl = this.isLocalAudio ? this.localAudio : (window.ap && window.ap.audio);
+        if (!audioEl) return;
+        if (!this.isLocalAudio && window.currentPlayingId !== this.data.id) return;
         
-        if (!this.isDraggingProgress) { 
+        const ct = audioEl.currentTime, dur = audioEl.duration || 0;
+        
+        if (!this.isDraggingProgress && dur > 0) { 
             const sb = document.getElementById('vg-seek-bar'); 
-            if(dur > 0){ 
-                sb.value = (ct/dur)*100; 
-                document.getElementById('vg-time-current').textContent = this.formatTime(ct); 
-                document.getElementById('vg-time-total').textContent = this.formatTime(dur); 
-            } 
+            sb.value = (ct/dur)*100; 
+            document.getElementById('vg-time-current').textContent = this.formatTime(ct); 
+            document.getElementById('vg-time-total').textContent = this.formatTime(dur); 
         }
         
         if (this.lyricTimes.length === 0 || this.isUserScrolling) return;

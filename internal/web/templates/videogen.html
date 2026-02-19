@@ -310,9 +310,19 @@
             
             <div class="vg-controls" id="vg-controls">
                 <input type="file" id="vg-file-input" accept="image/*,video/mp4" style="display:none;" onchange="VideoGen.handleFileSelect(this)">
+                <input type="file" id="vg-audio-input" accept="audio/*" style="display:none;" onchange="VideoGen.handleAudioSelect(this)">
+                <input type="file" id="vg-lyric-input" accept=".lrc,.txt" style="display:none;" onchange="VideoGen.handleLyricSelect(this)">
                 
                 <button class="vg-btn-icon" onclick="document.getElementById('vg-file-input').click()" title="更换封面/背景">
                     <i class="fa-regular fa-image"></i>
+                </button>
+
+                <button class="vg-btn-icon" onclick="document.getElementById('vg-audio-input').click()" title="更换本地音频 (仅限网页预览)">
+                    <i class="fa-solid fa-music"></i>
+                </button>
+
+                <button class="vg-btn-icon" onclick="document.getElementById('vg-lyric-input').click()" title="更换本地歌词 (.lrc)">
+                    <i class="fa-solid fa-file-lines"></i>
                 </button>
 
                 <button id="vg-play-toggle" class="vg-play-btn vg-btn-icon" onclick="VideoGen.togglePlay()">
