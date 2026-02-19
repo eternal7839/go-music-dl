@@ -33,7 +33,8 @@
                 mag = smoothing * this.previousMags[i] + (1 - smoothing) * mag;
                 this.previousMags[i] = mag;
                 let db = 20 * Math.log10(mag + 1e-6);
-                let val = (db + 100) * (255 / 70); 
+                // 降低灵敏度：将映射区间从 70 拉宽到 90，使高响度不易饱和
+                let val = (db + 100) * (255 / 90);
                 if(val < 0) val = 0; if(val > 255) val = 255;
                 this.mags[i] = val;
             }
@@ -186,9 +187,18 @@
                     if (data.isVideoBg) await seekVideo(time);
           
                     const startSample = frameIdx * samplesPerFrame;
-                    const pcmSlice = rawData.slice(startSample, startSample + 256);
-                    // 传入 0.4 平滑度参数，确保动画与实时播放同步干脆
-                    const freqData = FFT.getFrequencyData(pcmSlice, 256, 0.4);
+                    // 使用更大的 FFT 窗口以获得更好的低频分辨率（1024 或 2048 可选）
+                    const fftSize = 1024;
+                    const sliceEnd = Math.min(startSample + fftSize, rawData.length);
+                    let pcmSlice = rawData.slice(startSample, sliceEnd);
+                    // 如果到达音频末尾、长度不足，则补零以保证 FFT 窗口一致
+                    if (pcmSlice.length < fftSize) {
+                        const padded = new Float32Array(fftSize);
+                        padded.set(pcmSlice);
+                        pcmSlice = padded;
+                    }
+                    // 传入 0.4 平滑度参数，确保动画与实时播放同步
+                    const freqData = FFT.getFrequencyData(pcmSlice, fftSize, 0.4);
                     const visResult = processVisualizerBars(freqData);
           
                     ctx.clearRect(0, 0, width, height); 
