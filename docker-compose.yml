@@ -4,7 +4,7 @@ services:
     build: 
       context: .
       dockerfile: Dockerfile
-    image: go-music-dl:latest
+    image: guohuiyuan/go-music-dl:latest
     container_name: music-dl
     restart: unless-stopped
     ports:
