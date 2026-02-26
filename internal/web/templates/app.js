@@ -706,7 +706,7 @@ function showEditCollectionModal(id = '', name = '', desc = '', cover = '') {
     document.getElementById('editColDesc').value = desc;
     
     // 如果是随机网络生成的 picsum.photos 图，则在编辑框中留空，方便用户修改
-    if (cover.includes('picsum.photos')) {
+    if (cover && cover.includes('picsum.photos')) {
         document.getElementById('editColCover').value = '';
     } else {
         document.getElementById('editColCover').value = cover;
@@ -715,7 +715,7 @@ function showEditCollectionModal(id = '', name = '', desc = '', cover = '') {
     document.getElementById('editCollectionModal').style.display = 'flex';
 }
 
-// 保存歌单信息（含新增与更新）
+// 保存歌单信息（智能判断当前环境进行局部刷新）
 function saveCollection() {
     const id = document.getElementById('editColId').value;
     const name = document.getElementById('editColName').value.trim();
@@ -725,31 +725,31 @@ function saveCollection() {
     if (!name) return alert('名称不能为空');
     
     const payload = { name, description: desc, cover };
+    const isAddingSongModalOpen = document.getElementById('addToCollectionModal').style.display === 'flex';
     
-    if (id) {
-        // 更新
-        fetch(`${API_ROOT}/collections/${id}`, {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        }).then(r => r.json()).then(res => {
-            if (res.error) return alert(res.error);
+    const url = id ? `${API_ROOT}/collections/${id}` : `${API_ROOT}/collections`;
+    const method = id ? 'PUT' : 'POST';
+
+    fetch(url, {
+        method: method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    }).then(r => r.json()).then(res => {
+        if (res.error) return alert(res.error);
+        
+        document.getElementById('editCollectionModal').style.display = 'none';
+        
+        if (isAddingSongModalOpen) {
+            // 如果是在搜索界面添加歌曲的过程中调用的新建/编辑，只局部刷新弹窗列表
+            refreshAddToCollectionList();
+        } else {
+            // 如果是在主歌单管理界面调用的，则刷新网页
             window.location.reload();
-        });
-    } else {
-        // 新增
-        fetch(`${API_ROOT}/collections`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        }).then(r => r.json()).then(res => {
-            if (res.error) return alert(res.error);
-            window.location.reload();
-        });
-    }
+        }
+    });
 }
 
-// 删除歌单
+// 主歌单瀑布流页面的删除
 function deleteCollection(id) {
     if (!confirm('确定删除此歌单吗？内含歌曲记录也将被清空！')) return;
     fetch(`${API_ROOT}/collections/${id}`, { method: 'DELETE' })
@@ -757,6 +757,67 @@ function deleteCollection(id) {
         .then(res => {
             if (res.error) return alert(res.error);
             window.location.reload();
+        });
+}
+
+// Modal 弹窗内的删除(局部刷新)
+function deleteCollectionFromModal(id) {
+    if (!confirm('确定删除此歌单吗？内含歌曲记录也将被清空！')) return;
+    fetch(`${API_ROOT}/collections/${id}`, { method: 'DELETE' })
+        .then(r => r.json())
+        .then(res => {
+            if (res.error) return alert(res.error);
+            refreshAddToCollectionList();
+        });
+}
+
+// 抽取出来的弹窗列表渲染函数（支持动态刷新）
+function refreshAddToCollectionList() {
+    const container = document.getElementById('addColList');
+    container.innerHTML = '<div style="text-align: center; color: #a0aec0; padding: 20px;">加载中...</div>';
+    
+    fetch(API_ROOT + '/collections')
+        .then(r => r.json())
+        .then(data => {
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #a0aec0; padding: 20px;">暂无歌单，请点击上方「新建」创建</div>';
+                return;
+            }
+            container.innerHTML = '';
+            data.forEach(col => {
+                const item = document.createElement('div');
+                item.className = 'collection-item';
+                item.style.cursor = 'default'; // 取消父级 hover 样式，由子元素控制
+                
+                let cvr = col.cover;
+                if (!cvr) cvr = `https://picsum.photos/seed/col_${col.id}/400/400`;
+
+                // 完全通过原生 DOM 事件绑定，避免单引号/双引号带来的字符串转义崩溃
+                item.innerHTML = `
+                    <div class="col-clickable-area" style="display:flex; align-items:center; flex:1; overflow:hidden; cursor:pointer;" title="收藏到此歌单">
+                        <img src="${cvr}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;margin-right:12px;">
+                        <div class="collection-name" style="margin:0; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${col.name}</div>
+                    </div>
+                    <div style="display:flex; gap:6px; margin-left: 10px;">
+                        <button class="col-action-btn btn-edit" title="编辑歌单"><i class="fa-solid fa-pen"></i></button>
+                        <button class="col-action-btn del btn-del" title="删除歌单"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                `;
+                
+                item.querySelector('.col-clickable-area').onclick = () => addSongToCollection(col.id);
+                item.querySelector('.btn-edit').onclick = (e) => {
+                    e.stopPropagation();
+                    showEditCollectionModal(col.id, col.name, col.description || '', col.cover || '');
+                };
+                item.querySelector('.btn-del').onclick = (e) => {
+                    e.stopPropagation();
+                    deleteCollectionFromModal(col.id);
+                };
+
+                container.appendChild(item);
+            });
+        }).catch(() => {
+            container.innerHTML = '<div style="text-align: center; color: #e53e3e; padding: 20px;">加载失败</div>';
         });
 }
 
@@ -780,39 +841,7 @@ function openAddToCollectionModal(btn) {
     };
     
     document.getElementById('addToCollectionModal').style.display = 'flex';
-    
-    // 渲染待选项列表
-    const container = document.getElementById('addColList');
-    container.innerHTML = '<div style="text-align: center; color: #a0aec0; padding: 20px;">加载中...</div>';
-    
-    fetch(API_ROOT + '/collections')
-        .then(r => r.json())
-        .then(data => {
-            if (!data || data.length === 0) {
-                container.innerHTML = '<div style="text-align: center; color: #a0aec0; padding: 20px;">暂无歌单，请先去「我的自制歌单」创建</div>';
-                return;
-            }
-            container.innerHTML = '';
-            data.forEach(col => {
-                const item = document.createElement('div');
-                item.className = 'collection-item';
-                
-                let cvr = col.cover;
-                if (!cvr) cvr = `https://picsum.photos/seed/col_${col.id}/400/400`;
-
-                item.innerHTML = `
-                    <div style="display:flex; align-items:center; flex:1; overflow:hidden;">
-                        <img src="${cvr}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;margin-right:12px;">
-                        <div class="collection-name" style="margin:0; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${col.name}</div>
-                    </div>
-                    <i class="fa-solid fa-plus" style="color: #10b981; margin-left:10px;"></i>
-                `;
-                item.onclick = () => { addSongToCollection(col.id); };
-                container.appendChild(item);
-            });
-        }).catch(() => {
-            container.innerHTML = '<div style="text-align: center; color: #e53e3e; padding: 20px;">加载失败</div>';
-        });
+    refreshAddToCollectionList();
 }
 
 // 确认投递进指定歌单
@@ -833,7 +862,7 @@ function addSongToCollection(colId) {
     });
 }
 
-// 将歌曲从当前歌单中抹除，核心修复点：将老ID传回后端进行正确销毁，动态找卡片刷新
+// 将歌曲从当前歌单中抹除
 function removeSongFromCollection(btn, colId, originalSongId, originalSource) {
     if (!confirm('确定将此歌曲移出当前歌单吗？')) return;
     fetch(`${API_ROOT}/collections/${colId}/songs?id=${encodeURIComponent(originalSongId)}&source=${encodeURIComponent(originalSource)}`, { method: 'DELETE' })

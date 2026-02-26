@@ -535,7 +535,7 @@
     {{ end }}
 </div>
 
-<div id="cookieModal" class="modal-overlay">
+<div id="cookieModal" class="modal-overlay" style="z-index: 1001;">
     <div class="modal">
         <div class="modal-header">
             <h3>设置 Cookies</h3>
@@ -555,7 +555,7 @@
     </div>
 </div>
 
-<div id="editCollectionModal" class="modal-overlay">
+<div id="editCollectionModal" class="modal-overlay" style="z-index: 1005;">
     <div class="modal" style="max-width: 400px;">
         <div class="modal-header">
             <h3 id="editColTitle">新建歌单</h3>
@@ -580,15 +580,21 @@
     </div>
 </div>
 
-<div id="addToCollectionModal" class="modal-overlay">
+<div id="addToCollectionModal" class="modal-overlay" style="z-index: 1004;">
     <div class="modal" style="max-width: 400px;">
         <div class="modal-header">
             <h3>收藏到我的歌单</h3>
             <div class="modal-close" onclick="document.getElementById('addToCollectionModal').style.display='none'"><i class="fa-solid fa-xmark"></i></div>
         </div>
         <div class="modal-body">
-            <div id="addColList">
+            <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 14px; color: var(--text-sub);">选择或管理歌单</span>
+                <button class="btn-pill btn-pill-primary" style="padding: 6px 12px; font-size: 12px;" onclick="showEditCollectionModal()">
+                    <i class="fa-solid fa-plus"></i> 新建
+                </button>
             </div>
+            <div id="addColList">
+                </div>
         </div>
     </div>
 </div>
