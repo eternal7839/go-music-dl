@@ -9,3 +9,4 @@ go-music-dl-desktop*
 dist/
 nul
 video_output/
+favorites.db

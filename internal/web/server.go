@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"database/sql"
 	"embed"
 	"encoding/base64"
 	"encoding/json"
@@ -37,6 +38,9 @@ import (
 	"github.com/guohuiyuan/music-lib/qq"
 	"github.com/guohuiyuan/music-lib/soda"
 	"github.com/guohuiyuan/music-lib/utils"
+
+	// 引入 sqlite 驱动
+	_ "modernc.org/sqlite"
 )
 
 //go:embed templates/*
@@ -50,6 +54,48 @@ const (
 	CookieFile   = "cookies.json"
 	RoutePrefix  = "/music"
 )
+
+// --- SQLite 数据库管理 ---
+var db *sql.DB
+
+func initDB() {
+	var err error
+	// 数据库文件将与 cookies.json 在同一目录
+	db, err = sql.Open("sqlite", "favorites.db")
+	if err != nil {
+		panic("Failed to connect to SQLite: " + err.Error())
+	}
+
+	// 启用外键约束
+	db.Exec("PRAGMA foreign_keys = ON;")
+
+	schema := `
+	CREATE TABLE IF NOT EXISTS collections (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		description TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS saved_songs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		collection_id INTEGER NOT NULL,
+		song_id TEXT NOT NULL,
+		source TEXT NOT NULL,
+		extra TEXT,
+		name TEXT,
+		artist TEXT,
+		cover TEXT,
+		duration INTEGER,
+		added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(collection_id, song_id, source),
+		FOREIGN KEY(collection_id) REFERENCES collections(id) ON DELETE CASCADE
+	);
+	`
+	if _, err := db.Exec(schema); err != nil {
+		panic("Failed to init SQLite schema: " + err.Error())
+	}
+}
 
 // --- Cookie 管理 ---
 type CookieManager struct {
@@ -443,6 +489,8 @@ func getOriginalLink(source, id, typeStr string) string {
 // --- Main ---
 func Start(port string, shouldOpenBrowser bool) {
 	cm.Load()
+	initDB()
+	defer db.Close()
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
@@ -968,6 +1016,178 @@ func Start(port string, shouldOpenBrowser bool) {
 		}
 		c.String(200, "[00:00.00] 暂无歌词")
 	})
+
+	// ==========================================
+	// 收藏夹系统 API 路由
+	// ==========================================
+	colApi := api.Group("/collections")
+
+	// 获取所有收藏夹
+	colApi.GET("", func(c *gin.Context) {
+		rows, err := db.Query("SELECT id, name, description, created_at FROM collections ORDER BY id DESC")
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		var cols []map[string]interface{}
+		for rows.Next() {
+			var id int
+			var name, desc, createdAt string
+			rows.Scan(&id, &name, &desc, &createdAt)
+			cols = append(cols, gin.H{"id": id, "name": name, "description": desc, "created_at": createdAt})
+		}
+		c.JSON(200, cols)
+	})
+
+	// 创建收藏夹
+	colApi.POST("", func(c *gin.Context) {
+		var req struct {
+			Name        string `json:"name" binding:"required"`
+			Description string `json:"description"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "参数错误"})
+			return
+		}
+
+		res, err := db.Exec("INSERT INTO collections (name, description) VALUES (?, ?)", req.Name, req.Description)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "创建失败: " + err.Error()})
+			return
+		}
+		id, _ := res.LastInsertId()
+		c.JSON(200, gin.H{"id": id, "name": req.Name, "description": req.Description})
+	})
+
+	// 更新收藏夹
+	colApi.PUT("/:id", func(c *gin.Context) {
+		id := c.Param("id")
+		var req struct {
+			Name        string `json:"name" binding:"required"`
+			Description string `json:"description"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "参数错误"})
+			return
+		}
+
+		_, err := db.Exec("UPDATE collections SET name = ?, description = ? WHERE id = ?", req.Name, req.Description, id)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "更新失败"})
+			return
+		}
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
+	// 删除收藏夹
+	colApi.DELETE("/:id", func(c *gin.Context) {
+		id := c.Param("id")
+		_, err := db.Exec("DELETE FROM collections WHERE id = ?", id)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "删除失败"})
+			return
+		}
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
+	// 获取收藏夹内所有歌曲
+	colApi.GET("/:id/songs", func(c *gin.Context) {
+		colID := c.Param("id")
+		rows, err := db.Query(`
+			SELECT id, song_id, source, extra, name, artist, cover, duration, added_at 
+			FROM saved_songs WHERE collection_id = ? ORDER BY id DESC`, colID)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		var songs []map[string]interface{}
+		for rows.Next() {
+			var id, duration int
+			var songID, source, extra, name, artist, cover, addedAt string
+			rows.Scan(&id, &songID, &source, &extra, &name, &artist, &cover, &duration, &addedAt)
+			
+			// 将存入的额外信息字符串尝试转回 JSON 对象返回，若失败则原样返回
+			var extraObj interface{}
+			if err := json.Unmarshal([]byte(extra), &extraObj); err != nil {
+				extraObj = extra
+			}
+
+			songs = append(songs, gin.H{
+				"db_id":    id,
+				"id":       songID,
+				"source":   source,
+				"extra":    extraObj,
+				"name":     name,
+				"artist":   artist,
+				"cover":    cover,
+				"duration": duration,
+				"added_at": addedAt,
+			})
+		}
+		c.JSON(200, songs)
+	})
+
+	// 收藏单曲到指定的收藏夹
+	colApi.POST("/:id/songs", func(c *gin.Context) {
+		colID := c.Param("id")
+		var req struct {
+			SongID   string      `json:"id" binding:"required"`
+			Source   string      `json:"source" binding:"required"`
+			Name     string      `json:"name"`
+			Artist   string      `json:"artist"`
+			Cover    string      `json:"cover"`
+			Duration int         `json:"duration"`
+			Extra    interface{} `json:"extra"` // 接受任意格式并转存为字符串
+		}
+
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "参数错误，缺失id或source"})
+			return
+		}
+
+		extraStr := ""
+		if req.Extra != nil {
+			b, _ := json.Marshal(req.Extra)
+			extraStr = string(b)
+		}
+
+		_, err := db.Exec(`
+			INSERT OR IGNORE INTO saved_songs 
+			(collection_id, song_id, source, extra, name, artist, cover, duration) 
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			colID, req.SongID, req.Source, extraStr, req.Name, req.Artist, req.Cover, req.Duration,
+		)
+
+		if err != nil {
+			c.JSON(500, gin.H{"error": "添加失败: " + err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
+	// 从收藏夹中删除单曲
+	colApi.DELETE("/:id/songs", func(c *gin.Context) {
+		colID := c.Param("id")
+		songID := c.Query("id")
+		source := c.Query("source")
+
+		if songID == "" || source == "" {
+			c.JSON(400, gin.H{"error": "需要通过 query 传递 id 和 source"})
+			return
+		}
+
+		_, err := db.Exec("DELETE FROM saved_songs WHERE collection_id = ? AND song_id = ? AND source = ?", colID, songID, source)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "删除失败"})
+			return
+		}
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
 
 	// --- 视频生成模块 API 路由集成 ---
 	videoApi := api.Group("/videogen")

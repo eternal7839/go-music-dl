@@ -5,12 +5,14 @@ const API_ROOT = window.API_ROOT;
 document.addEventListener('DOMContentLoaded', function() {
     const checkboxes = document.querySelectorAll('.source-checkbox');
     
-    document.getElementById('btn-all').onclick = () => {
-        checkboxes.forEach(cb => { if (!cb.disabled) cb.checked = true; });
-    };
-    document.getElementById('btn-none').onclick = () => {
-        checkboxes.forEach(cb => { if (!cb.disabled) cb.checked = false; });
-    };
+    const btnAll = document.getElementById('btn-all');
+    if(btnAll) {
+        btnAll.onclick = () => { checkboxes.forEach(cb => { if (!cb.disabled) cb.checked = true; }); };
+    }
+    const btnNone = document.getElementById('btn-none');
+    if(btnNone) {
+        btnNone.onclick = () => { checkboxes.forEach(cb => { if (!cb.disabled) cb.checked = false; }); };
+    }
 
     const initialTypeEl = document.querySelector('input[name="type"]:checked');
     if (initialTypeEl) {
@@ -156,6 +158,7 @@ function saveCookies() {
 
 window.addEventListener('scroll', () => {
     const btn = document.getElementById('back-to-top');
+    if(!btn) return;
     if (window.scrollY > 300) {
         btn.classList.add('show');
     } else {
@@ -171,7 +174,7 @@ function scrollToTop() {
 const ap = new APlayer({
     container: document.getElementById('aplayer'),
     fixed: true, 
-    autoplay: false,  // 【修改】：初始化时保持暂停状态
+    autoplay: false, 
     theme: '#10b981',
     loop: 'all', 
     order: 'list', 
@@ -186,7 +189,6 @@ window.ap = ap;
 let currentPlayingId = null;
 window.currentPlayingId = null; 
 
-// 绑定 APlayer 封面点击事件打开视频生成界面
 setTimeout(() => {
     const apPic = document.querySelector('.aplayer-pic');
     if (apPic) {
@@ -273,6 +275,7 @@ ap.on('ended', () => {
 
 function highlightCard(targetId) {
     document.querySelectorAll('.song-card').forEach(c => c.classList.remove('playing-active'));
+    if(!targetId) return;
     const target = document.querySelector(`.song-card[data-id="${targetId}"]`);
     if (target) {
         target.classList.add('playing-active');
@@ -282,8 +285,9 @@ function highlightCard(targetId) {
 function setPlayButtonState(card, isPlaying) {
     if (!card) return;
     const btn = card.querySelector('.btn-play');
-    const icon = btn ? btn.querySelector('i') : null;
-    if (!btn || !icon) return;
+    if(!btn) return;
+    const icon = btn.querySelector('i');
+    if (!icon) return;
 
     icon.classList.remove('fa-play', 'fa-stop');
     icon.classList.add(isPlaying ? 'fa-stop' : 'fa-play');
@@ -351,7 +355,6 @@ function updateCardWithSong(card, song) {
         imgEl.src = song.cover || 'https://via.placeholder.com/150?text=Music';
         imgEl.alt = song.name || '';
         
-        coverWrap.style.cursor = 'pointer';
         coverWrap.onclick = (e) => {
             e.stopPropagation();
             if (window.VideoGen) {
@@ -528,6 +531,8 @@ function toggleBatchMode() {
     const btn = document.getElementById('btn-batch-toggle');
     const toolbar = document.getElementById('batch-toolbar');
     
+    if(!btn || !toolbar) return;
+
     if (isBatchMode) {
         btn.innerHTML = '<i class="fa-solid fa-xmark"></i> 退出批量';
         btn.style.color = 'var(--error-color)';
@@ -548,19 +553,21 @@ function updateBatchToolbar() {
     const batchSwitch = document.getElementById('btn-batch-switch');
     const batchDl = document.getElementById('btn-batch-dl');
     
-    document.getElementById('selected-count').textContent = count;
+    if(document.getElementById('selected-count')) {
+        document.getElementById('selected-count').textContent = count;
+    }
     
     const allBoxes = document.querySelectorAll('.song-checkbox');
-    if (allBoxes.length > 0) {
+    if (allBoxes.length > 0 && selectAllCb) {
         selectAllCb.checked = (allBoxes.length === count);
     }
 
     if (count > 0) {
-        batchSwitch.disabled = false;
-        batchDl.disabled = false;
+        if(batchSwitch) batchSwitch.disabled = false;
+        if(batchDl) batchDl.disabled = false;
     } else {
-        batchSwitch.disabled = true;
-        batchDl.disabled = true;
+        if(batchSwitch) batchSwitch.disabled = true;
+        if(batchDl) batchDl.disabled = true;
     }
     
     document.querySelectorAll('.song-card').forEach(card => card.classList.remove('selected'));
@@ -667,4 +674,230 @@ function batchSwitchSource() {
             }
         }
     });
+}
+
+
+// ==========================================
+// 收藏夹系统前端逻辑
+// ==========================================
+
+let pendingFavSong = null; // 暂存当前准备加入收藏夹的歌曲数据
+let currentViewColId = null; // 当前正在查看详情的收藏夹 ID
+let currentViewColSongs = []; // 暂存当前详情界面的所有歌曲(用来全量播放)
+
+// 1. 打开主收藏夹管理面板
+function openCollectionManager() {
+    document.getElementById('collectionManagerModal').style.display = 'flex';
+    fetchAndRenderCollections('colList', true);
+}
+
+// 2. 加载收藏夹列表
+// withActions = true 时显示 删除/查看 按钮 (主面板)
+// withActions = false 时显示 选中 加入 功能 (添加歌曲面板)
+function fetchAndRenderCollections(containerId, withActions) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '<div style="text-align: center; color: #a0aec0; padding: 20px;">加载中...</div>';
+    
+    fetch(API_ROOT + '/collections')
+        .then(r => r.json())
+        .then(data => {
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #a0aec0; padding: 20px;">暂无收藏夹</div>';
+                return;
+            }
+            container.innerHTML = '';
+            data.forEach(col => {
+                const item = document.createElement('div');
+                item.className = 'collection-item';
+                
+                let actionHtml = '';
+                if (withActions) {
+                    actionHtml = `
+                        <div class="collection-actions">
+                            <button class="col-btn" onclick="openCollectionDetail('${col.id}', '${col.name}')">查看</button>
+                            <button class="col-btn del" onclick="deleteCollection('${col.id}')">删除</button>
+                        </div>
+                    `;
+                    item.innerHTML = `
+                        <div class="collection-info" onclick="openCollectionDetail('${col.id}', '${col.name}')">
+                            <div class="collection-name">${col.name}</div>
+                            <div class="collection-desc">${col.description || '无描述'}</div>
+                        </div>
+                        ${actionHtml}
+                    `;
+                } else {
+                    item.style.cursor = 'pointer';
+                    item.innerHTML = `
+                        <div class="collection-info">
+                            <div class="collection-name">${col.name}</div>
+                            <div class="collection-desc">${col.description || ''}</div>
+                        </div>
+                        <i class="fa-solid fa-plus" style="color: #10b981;"></i>
+                    `;
+                    item.onclick = () => { addSongToCollection(col.id); };
+                }
+                container.appendChild(item);
+            });
+        })
+        .catch(() => {
+            container.innerHTML = '<div style="text-align: center; color: #e53e3e; padding: 20px;">加载失败</div>';
+        });
+}
+
+// 3. 创建新收藏夹
+function createCollection() {
+    const nameInput = document.getElementById('newColName');
+    const name = nameInput.value.trim();
+    if (!name) return alert('请输入收藏夹名称');
+    
+    fetch(API_ROOT + '/collections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, description: '' })
+    }).then(r => r.json()).then(res => {
+        if (res.error) return alert(res.error);
+        nameInput.value = '';
+        fetchAndRenderCollections('colList', true);
+    });
+}
+
+// 4. 删除收藏夹
+function deleteCollection(id) {
+    if (!confirm("确定要删除此收藏夹及其包含的所有歌曲记录吗？")) return;
+    fetch(`${API_ROOT}/collections/${id}`, { method: 'DELETE' })
+        .then(() => fetchAndRenderCollections('colList', true));
+}
+
+// 5. 点击列表内单曲的爱心 -> 弹出选择收藏夹面板
+function openAddToCollectionModal(btn) {
+    const card = btn.closest('.song-card');
+    if (!card) return;
+    
+    let coverUrl = '';
+    const imgEl = card.querySelector('.cover-wrapper img');
+    if (imgEl) coverUrl = imgEl.src;
+
+    pendingFavSong = {
+        id: card.dataset.id,
+        source: card.dataset.source,
+        name: card.dataset.name,
+        artist: card.dataset.artist,
+        duration: parseInt(card.dataset.duration) || 0,
+        cover: coverUrl,
+        extra: { saved_from: "web_ui" }
+    };
+    
+    document.getElementById('addToCollectionModal').style.display = 'flex';
+    fetchAndRenderCollections('addColList', false);
+}
+
+// 6. 确认添加到目标收藏夹
+function addSongToCollection(colId) {
+    if (!pendingFavSong) return;
+    
+    fetch(`${API_ROOT}/collections/${colId}/songs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pendingFavSong)
+    }).then(r => r.json()).then(res => {
+        if (res.error) {
+            alert(res.error);
+        } else {
+            alert('已成功添加到收藏夹！');
+            document.getElementById('addToCollectionModal').style.display = 'none';
+        }
+    });
+}
+
+// 7. 打开并查看收藏夹详情 (歌曲列表)
+function openCollectionDetail(colId, colName) {
+    currentViewColId = colId;
+    document.getElementById('colDetailTitle').textContent = colName;
+    document.getElementById('collectionManagerModal').style.display = 'none'; // hide upper modal
+    document.getElementById('collectionDetailModal').style.display = 'flex';
+    
+    const container = document.getElementById('colSongsList');
+    container.innerHTML = '<div style="text-align: center; color: #a0aec0; padding: 20px;">加载中...</div>';
+    
+    fetch(`${API_ROOT}/collections/${colId}/songs`)
+        .then(r => r.json())
+        .then(songs => {
+            currentViewColSongs = songs || [];
+            if (!songs || songs.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #a0aec0; padding: 20px;">该收藏夹还是空的</div>';
+                return;
+            }
+            container.innerHTML = '';
+            songs.forEach((song, idx) => {
+                const item = document.createElement('div');
+                item.className = 'collection-item';
+                item.style.background = '#fff';
+                const fDur = formatDuration(song.duration);
+                item.innerHTML = `
+                    <div class="cover-wrapper" style="width: 45px; height: 45px; margin-right: 12px; border-radius: 6px;">
+                        <img src="${song.cover || 'https://via.placeholder.com/150'}" loading="lazy">
+                    </div>
+                    <div class="collection-info">
+                        <div class="collection-name" style="font-size:14px;">${song.name}</div>
+                        <div class="collection-desc">${song.artist} <span class="tag tag-src" style="margin-left:5px;">${song.source}</span> <span class="tag">${fDur}</span></div>
+                    </div>
+                    <div class="collection-actions">
+                        <button class="col-btn" title="播放此歌" onclick="playSingleFromCollection(${idx})"><i class="fa-solid fa-play"></i></button>
+                        <button class="col-btn del" title="移出收藏" onclick="removeSongFromCollection('${colId}', '${song.id}', '${song.source}')"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }).catch(() => {
+            container.innerHTML = '<div style="text-align: center; color: #e53e3e; padding: 20px;">加载失败</div>';
+        });
+}
+
+// 8. 将整张收藏夹推入 APlayer 播放列表
+function playCurrentCollection() {
+    if (!currentViewColSongs || currentViewColSongs.length === 0) return alert('列表为空');
+    
+    ap.list.clear();
+    const playlist = currentViewColSongs.map(ds => ({
+        name: ds.name,
+        artist: ds.artist,
+        url: `${API_ROOT}/download?id=${encodeURIComponent(ds.id)}&source=${ds.source}&name=${encodeURIComponent(ds.name)}&artist=${encodeURIComponent(ds.artist)}`,
+        cover: ds.cover || 'https://via.placeholder.com/150',
+        lrc: `${API_ROOT}/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
+        theme: '#10b981',
+        custom_id: ds.id,
+        source: ds.source
+    }));
+
+    ap.list.add(playlist);
+    ap.play();
+    document.getElementById('collectionDetailModal').style.display = 'none';
+}
+
+// 9. 播放收藏夹里的单曲 (自动把整个收藏夹作为列表，定位到该曲)
+function playSingleFromCollection(index) {
+    if (!currentViewColSongs || currentViewColSongs.length === 0) return;
+    
+    ap.list.clear();
+    const playlist = currentViewColSongs.map(ds => ({
+        name: ds.name,
+        artist: ds.artist,
+        url: `${API_ROOT}/download?id=${encodeURIComponent(ds.id)}&source=${ds.source}&name=${encodeURIComponent(ds.name)}&artist=${encodeURIComponent(ds.artist)}`,
+        cover: ds.cover || 'https://via.placeholder.com/150',
+        lrc: `${API_ROOT}/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
+        theme: '#10b981',
+        custom_id: ds.id,
+        source: ds.source
+    }));
+
+    ap.list.add(playlist);
+    ap.list.switch(index);
+    ap.play();
+}
+
+// 10. 从收藏夹移除歌曲
+function removeSongFromCollection(colId, songId, source) {
+    if (!confirm('确定将此歌曲移出收藏吗？')) return;
+    fetch(`${API_ROOT}/collections/${colId}/songs?id=${encodeURIComponent(songId)}&source=${encodeURIComponent(source)}`, { method: 'DELETE' })
+        .then(() => openCollectionDetail(colId, document.getElementById('colDetailTitle').textContent));
 }
