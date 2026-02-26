@@ -60,13 +60,10 @@ var db *sql.DB
 
 func initDB() {
 	var err error
-	// 数据库文件将与 cookies.json 在同一目录
 	db, err = sql.Open("sqlite", "favorites.db")
 	if err != nil {
 		panic("Failed to connect to SQLite: " + err.Error())
 	}
-
-	// 启用外键约束
 	db.Exec("PRAGMA foreign_keys = ON;")
 
 	schema := `
@@ -74,6 +71,7 @@ func initDB() {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL,
 		description TEXT,
+		cover TEXT,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -95,6 +93,9 @@ func initDB() {
 	if _, err := db.Exec(schema); err != nil {
 		panic("Failed to init SQLite schema: " + err.Error())
 	}
+
+	// 兼容旧数据库：如果缺少 cover 字段，尝试追加（报错则说明已存在，静默忽略）
+	db.Exec("ALTER TABLE collections ADD COLUMN cover TEXT;")
 }
 
 // --- Cookie 管理 ---
@@ -535,7 +536,7 @@ func Start(port string, shouldOpenBrowser bool) {
 	})
 
 	api.GET("/", func(c *gin.Context) {
-		renderIndex(c, nil, nil, "", nil, "", "song", "")
+		renderIndex(c, nil, nil, "", nil, "", "song", "", "", "", false)
 	})
 
 	api.GET("/recommend", func(c *gin.Context) {
@@ -566,7 +567,7 @@ func Start(port string, shouldOpenBrowser bool) {
 		}
 		wg.Wait()
 
-		renderIndex(c, nil, allPlaylists, "🔥 每日推荐", sources, "", "playlist", "")
+		renderIndex(c, nil, allPlaylists, "🔥 每日推荐", sources, "", "playlist", "", "", "", false)
 	})
 
 	api.GET("/search", func(c *gin.Context) {
@@ -655,19 +656,19 @@ func Start(port string, shouldOpenBrowser bool) {
 			wg.Wait()
 		}
 
-		renderIndex(c, allSongs, allPlaylists, keyword, sources, errorMsg, searchType, "")
+		renderIndex(c, allSongs, allPlaylists, keyword, sources, errorMsg, searchType, "", "", "", false)
 	})
 
 	api.GET("/playlist", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
 		if id == "" || src == "" {
-			renderIndex(c, nil, nil, "", nil, "缺少参数", "song", "")
+			renderIndex(c, nil, nil, "", nil, "缺少参数", "song", "", "", "", false)
 			return
 		}
 		fn := getPlaylistDetailFunc(src)
 		if fn == nil {
-			renderIndex(c, nil, nil, "", nil, "该源不支持查看歌单详情", "song", "")
+			renderIndex(c, nil, nil, "", nil, "该源不支持查看歌单详情", "song", "", "", "", false)
 			return
 		}
 		songs, err := fn(id)
@@ -676,7 +677,77 @@ func Start(port string, shouldOpenBrowser bool) {
 			errMsg = fmt.Sprintf("获取歌单失败: %v", err)
 		}
 		playlistLink := getOriginalLink(src, id, "playlist")
-		renderIndex(c, songs, nil, "", []string{src}, errMsg, "song", playlistLink)
+		renderIndex(c, songs, nil, "", []string{src}, errMsg, "song", playlistLink, "", "", false)
+	})
+
+	api.GET("/my_collections", func(c *gin.Context) {
+		rows, err := db.Query("SELECT id, name, description, cover FROM collections ORDER BY id DESC")
+		if err != nil {
+			renderIndex(c, nil, nil, "我的自制歌单", nil, "获取收藏夹失败", "playlist", "", "", "", true)
+			return
+		}
+		defer rows.Close()
+
+		var playlists []model.Playlist
+		for rows.Next() {
+			var id int
+			var name, desc string
+			var cover sql.NullString
+			rows.Scan(&id, &name, &desc, &cover)
+			
+			var count int
+			db.QueryRow("SELECT count(*) FROM saved_songs WHERE collection_id = ?", id).Scan(&count)
+
+			cvr := cover.String
+			if cvr == "" {
+				cvr = fmt.Sprintf("https://picsum.photos/seed/col_%d/400/400", id)
+			}
+
+			playlists = append(playlists, model.Playlist{
+				ID:          fmt.Sprint(id),
+				Name:        name,
+				Description: desc,
+				Cover:       cvr,
+				Creator:     "我自己",
+				TrackCount:  count,
+				Source:      "local",
+			})
+		}
+		renderIndex(c, nil, playlists, "我的自制歌单", nil, "", "playlist", "", "", "", true)
+	})
+
+	api.GET("/collection", func(c *gin.Context) {
+		id := c.Query("id")
+		if id == "" {
+			renderIndex(c, nil, nil, "", nil, "缺少参数", "song", "", "", "", false)
+			return
+		}
+
+		var colName string
+		err := db.QueryRow("SELECT name FROM collections WHERE id = ?", id).Scan(&colName)
+		if err != nil {
+			renderIndex(c, nil, nil, "", nil, "自制歌单不存在", "song", "", "", "", false)
+			return
+		}
+
+		rows, err := db.Query(`
+			SELECT song_id, source, name, artist, cover, duration 
+			FROM saved_songs WHERE collection_id = ? ORDER BY id DESC`, id)
+		
+		var songs []model.Song
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var s model.Song
+				var dur int
+				rows.Scan(&s.ID, &s.Source, &s.Name, &s.Artist, &s.Cover, &dur)
+				
+				// 只直接向 Duration 字段赋值，前台模板会自动调用其内置的 {{.FormatDuration}} 方法格式化显示
+				s.Duration = dur 
+				songs = append(songs, s)
+			}
+		}
+		renderIndex(c, songs, nil, "", nil, "", "song", "", id, colName, false)
 	})
 
 	api.GET("/inspect", func(c *gin.Context) {
@@ -1022,9 +1093,8 @@ func Start(port string, shouldOpenBrowser bool) {
 	// ==========================================
 	colApi := api.Group("/collections")
 
-	// 获取所有收藏夹
 	colApi.GET("", func(c *gin.Context) {
-		rows, err := db.Query("SELECT id, name, description, created_at FROM collections ORDER BY id DESC")
+		rows, err := db.Query("SELECT id, name, description, cover, created_at FROM collections ORDER BY id DESC")
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
@@ -1035,45 +1105,46 @@ func Start(port string, shouldOpenBrowser bool) {
 		for rows.Next() {
 			var id int
 			var name, desc, createdAt string
-			rows.Scan(&id, &name, &desc, &createdAt)
-			cols = append(cols, gin.H{"id": id, "name": name, "description": desc, "created_at": createdAt})
+			var cover sql.NullString
+			rows.Scan(&id, &name, &desc, &cover, &createdAt)
+			cols = append(cols, gin.H{"id": id, "name": name, "description": desc, "cover": cover.String, "created_at": createdAt})
 		}
 		c.JSON(200, cols)
 	})
 
-	// 创建收藏夹
 	colApi.POST("", func(c *gin.Context) {
 		var req struct {
 			Name        string `json:"name" binding:"required"`
 			Description string `json:"description"`
+			Cover       string `json:"cover"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "参数错误"})
 			return
 		}
 
-		res, err := db.Exec("INSERT INTO collections (name, description) VALUES (?, ?)", req.Name, req.Description)
+		res, err := db.Exec("INSERT INTO collections (name, description, cover) VALUES (?, ?, ?)", req.Name, req.Description, req.Cover)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "创建失败: " + err.Error()})
 			return
 		}
 		id, _ := res.LastInsertId()
-		c.JSON(200, gin.H{"id": id, "name": req.Name, "description": req.Description})
+		c.JSON(200, gin.H{"id": id, "name": req.Name})
 	})
 
-	// 更新收藏夹
 	colApi.PUT("/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		var req struct {
 			Name        string `json:"name" binding:"required"`
 			Description string `json:"description"`
+			Cover       string `json:"cover"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "参数错误"})
 			return
 		}
 
-		_, err := db.Exec("UPDATE collections SET name = ?, description = ? WHERE id = ?", req.Name, req.Description, id)
+		_, err := db.Exec("UPDATE collections SET name = ?, description = ?, cover = ? WHERE id = ?", req.Name, req.Description, req.Cover, id)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "更新失败"})
 			return
@@ -1081,7 +1152,6 @@ func Start(port string, shouldOpenBrowser bool) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// 删除收藏夹
 	colApi.DELETE("/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		_, err := db.Exec("DELETE FROM collections WHERE id = ?", id)
@@ -1092,46 +1162,6 @@ func Start(port string, shouldOpenBrowser bool) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// 获取收藏夹内所有歌曲
-	colApi.GET("/:id/songs", func(c *gin.Context) {
-		colID := c.Param("id")
-		rows, err := db.Query(`
-			SELECT id, song_id, source, extra, name, artist, cover, duration, added_at 
-			FROM saved_songs WHERE collection_id = ? ORDER BY id DESC`, colID)
-		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
-			return
-		}
-		defer rows.Close()
-
-		var songs []map[string]interface{}
-		for rows.Next() {
-			var id, duration int
-			var songID, source, extra, name, artist, cover, addedAt string
-			rows.Scan(&id, &songID, &source, &extra, &name, &artist, &cover, &duration, &addedAt)
-			
-			// 将存入的额外信息字符串尝试转回 JSON 对象返回，若失败则原样返回
-			var extraObj interface{}
-			if err := json.Unmarshal([]byte(extra), &extraObj); err != nil {
-				extraObj = extra
-			}
-
-			songs = append(songs, gin.H{
-				"db_id":    id,
-				"id":       songID,
-				"source":   source,
-				"extra":    extraObj,
-				"name":     name,
-				"artist":   artist,
-				"cover":    cover,
-				"duration": duration,
-				"added_at": addedAt,
-			})
-		}
-		c.JSON(200, songs)
-	})
-
-	// 收藏单曲到指定的收藏夹
 	colApi.POST("/:id/songs", func(c *gin.Context) {
 		colID := c.Param("id")
 		var req struct {
@@ -1141,7 +1171,7 @@ func Start(port string, shouldOpenBrowser bool) {
 			Artist   string      `json:"artist"`
 			Cover    string      `json:"cover"`
 			Duration int         `json:"duration"`
-			Extra    interface{} `json:"extra"` // 接受任意格式并转存为字符串
+			Extra    interface{} `json:"extra"` 
 		}
 
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -1169,7 +1199,6 @@ func Start(port string, shouldOpenBrowser bool) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// 从收藏夹中删除单曲
 	colApi.DELETE("/:id/songs", func(c *gin.Context) {
 		colID := c.Param("id")
 		songID := c.Query("id")
@@ -1188,22 +1217,17 @@ func Start(port string, shouldOpenBrowser bool) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-
 	// --- 视频生成模块 API 路由集成 ---
 	videoApi := api.Group("/videogen")
-
-	// 1. 初始化渲染会话 (已支持前端本地上传文件直传)
 	videoApi.POST("/init", func(c *gin.Context) {
 		var id, source string
 		var hasCustomAudio bool
 
-		// 判断请求格式：如果带有本地音频文件，则是 FormData
 		if strings.HasPrefix(c.GetHeader("Content-Type"), "multipart/form-data") {
 			id = c.PostForm("id")
 			source = c.PostForm("source")
 			hasCustomAudio = true
 		} else {
-			// 如果没有传本地文件，还是走原来的 JSON 解析逻辑
 			var req struct {
 				ID     string `json:"id"`
 				Source string `json:"source"`
@@ -1223,7 +1247,6 @@ func Start(port string, shouldOpenBrowser bool) {
 		var proxyAudioUrl string
 
 		if hasCustomAudio {
-			// 接收前端传过来的自定义本地音频文件，并直接保存到服务器作为底层音轨
 			file, err := c.FormFile("audio_file")
 			if err != nil {
 				c.JSON(400, gin.H{"error": "Failed to receive custom audio"})
@@ -1233,10 +1256,8 @@ func Start(port string, shouldOpenBrowser bool) {
 				c.JSON(500, gin.H{"error": "Failed to save custom audio"})
 				return
 			}
-			// 既然本地已有，前端不需要代理链接去下载了
 			proxyAudioUrl = "" 
 		} else {
-			// 原版逻辑：通过 ID 去云端源站扒原始音乐
 			fn := getDownloadFunc(source)
 			if fn == nil {
 				c.JSON(500, gin.H{"error": "Source not supported"})
@@ -1363,7 +1384,7 @@ func Start(port string, shouldOpenBrowser bool) {
 	r.Run(":" + port)
 }
 
-func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist, q string, selected []string, errMsg string, searchType string, playlistLink string) {
+func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist, q string, selected []string, errMsg string, searchType string, playlistLink string, colID string, colName string, isLocalColPage bool) {
 	allSrc := core.GetAllSourceNames()
 	desc := make(map[string]string)
 	for _, s := range allSrc {
@@ -1388,6 +1409,9 @@ func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist,
 		"PlaylistSupported":  playlistSupported,
 		"Root":               RoutePrefix,
 		"PlaylistLink":       playlistLink,
+		"ColID":              colID,
+		"ColName":            colName,
+		"IsLocalColPage":     isLocalColPage,
 	})
 }
 

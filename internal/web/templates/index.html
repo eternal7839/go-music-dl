@@ -177,6 +177,7 @@
         .tags { display: flex; gap: 6px; }
         .tag { font-size: 10px; padding: 3px 8px; border-radius: 6px; background: #edf2f7; color: #718096; font-weight: 600; }
         .tag-src { background: #ebf8ff; color: #3182ce; text-transform: uppercase; }
+        .tag-local { background: #fff5f5; color: #e53e3e; text-transform: uppercase; }
         .tag-loading { color: #d69e2e; } 
         .tag-success { color: #38a169; }
         .tag-fail { color: #e53e3e; }
@@ -194,14 +195,22 @@
         .btn-fav:hover { background: #fed7d7; color: #e53e3e; border-color: #fc8181; }
 
         .playlist-grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; }
-        .playlist-card { background: #fff; border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; text-decoration: none; color: inherit; }
+        .playlist-card { background: #fff; border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; text-decoration: none; color: inherit; position: relative; }
         .playlist-card:hover { transform: translateY(-5px); box-shadow: var(--shadow-active); }
         .playlist-cover { width: 100%; aspect-ratio: 1; background: #eee; position: relative; }
         .playlist-cover img { width: 100%; height: 100%; object-fit: cover; }
-        .playlist-meta { padding: 12px; flex: 1; display: flex; flex-direction: column; }
+        .playlist-meta { padding: 12px; flex: 1; display: flex; flex-direction: column; position: relative; }
         .playlist-title { font-size: 14px; font-weight: 700; margin: 0 0 6px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .playlist-author { font-size: 12px; color: var(--text-sub); margin-bottom: 4px; }
         .playlist-count { font-size: 11px; color: #a0aec0; margin-top: auto; }
+
+        .col-action-btn { 
+            background: rgba(255,255,255,0.95); border: 1px solid #e2e8f0; border-radius: 6px; 
+            width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+            color: var(--text-sub); cursor: pointer; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .col-action-btn:hover { color: #10b981; border-color: #10b981; transform: scale(1.1); }
+        .col-action-btn.del:hover { color: #e53e3e; border-color: #e53e3e; }
 
         .no-results { text-align: center; padding: 60px; color: var(--text-sub); }
 
@@ -218,25 +227,14 @@
         .modal-body { flex: 1; overflow-y: auto; }
         
         .cookie-list { margin: 15px 0; }
-        .cookie-item { margin-bottom: 10px; }
+        .cookie-item { margin-bottom: 15px; }
         .cookie-item label { display: block; font-size: 12px; color: #718096; margin-bottom: 4px; font-weight: 600; }
-        .cookie-item input { width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px; box-sizing: border-box; }
-        .btn-save { width: 100%; padding: 10px; background: var(--primary-gradient); color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; margin-top: 10px;}
+        .cookie-item input { width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; box-sizing: border-box; outline: none; }
+        .cookie-item input:focus { border-color: #10b981; }
+        .btn-save { width: 100%; padding: 12px; background: var(--primary-gradient); color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; margin-top: 10px; font-size: 15px;}
 
-        /* Collection UI */
-        .collection-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 10px; transition: all 0.2s; background: #faf8f8;}
-        .collection-item:hover { border-color: #fc8181; box-shadow: 0 2px 8px rgba(252,129,129,0.15); }
-        .collection-info { flex: 1; min-width: 0; cursor: pointer;}
-        .collection-name { font-weight: 600; font-size: 15px; color: var(--text-main); margin-bottom: 4px;}
-        .collection-desc { font-size: 12px; color: var(--text-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
-        .collection-actions { display: flex; gap: 8px; }
-        .col-btn { background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 10px; color: var(--text-sub); cursor: pointer; font-size: 13px; transition: 0.2s;}
-        .col-btn:hover { color: #10b981; border-color: #10b981; }
-        .col-btn.del:hover { color: #e53e3e; border-color: #e53e3e; }
-        
-        .create-col-form { display: flex; gap: 10px; margin-bottom: 20px; }
-        .create-col-form input { flex: 1; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; }
-        .create-col-form input:focus { border-color: #fc8181; }
+        .collection-item { display: flex; align-items: center; justify-content: space-between; padding: 10px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 10px; transition: all 0.2s; background: #faf8f8; cursor: pointer;}
+        .collection-item:hover { border-color: #10b981; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15); }
 
         .back-to-top { position: fixed; bottom: 120px; right: 20px; width: 45px; height: 45px; background: white; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 1000; opacity: 0; visibility: hidden; transition: all 0.3s ease; color: #10b981; font-size: 20px; }
         .back-to-top.show { opacity: 1; visibility: visible; transform: translateY(0); }
@@ -313,7 +311,7 @@
                     <i class="fa-solid fa-fire"></i> 获取每日推荐歌单
                 </button>
                 <button type="button" class="btn-pill btn-pill-fav" onclick="openCollectionManager()">
-                    <i class="fa-solid fa-heart"></i> 我的收藏夹
+                    <i class="fa-solid fa-folder-open"></i> 我的自制歌单
                 </button>
             </div>
 
@@ -353,13 +351,26 @@
         </form>
     </div>
 
+    {{ if .IsLocalColPage }}
+        <div class="list-header" style="margin-bottom: 20px;">
+            <div>
+                <span class="result-count" style="font-size: 16px;"><i class="fa-solid fa-folder-open"></i> 本地自制歌单 (共 {{ len .Playlists }} 个)</span>
+            </div>
+            <button type="button" class="btn-pill btn-pill-primary" onclick="showEditCollectionModal()">
+                <i class="fa-solid fa-plus"></i> 新建歌单
+            </button>
+        </div>
+    {{ end }}
+
     {{ if .Playlists }}
         <div class="playlist-grid-container">
             {{ range .Playlists }}
-            <div class="playlist-card" onclick="location.href='{{$.Root}}/playlist?id={{.ID}}&source={{.Source}}'">
+            <div class="playlist-card" onclick="location.href='{{$.Root}}/{{ if eq .Source "local" }}collection?id={{.ID}}{{ else }}playlist?id={{.ID}}&source={{.Source}}{{ end }}'">
                 <div class="playlist-cover">
-                    <img src="{{ .Cover }}" loading="lazy" onerror="this.src='https://via.placeholder.com/150?text=Playlist'">
-                    <span class="tag tag-src" style="position:absolute; top:5px; right:5px; margin:0;">{{ .Source }}</span>
+                    <img src="{{ .Cover }}" loading="lazy" onerror="this.src='https://via.placeholder.com/400?text=Cover'">
+                    <span class="tag {{ if eq .Source "local" }}tag-local{{ else }}tag-src{{ end }}" style="position:absolute; top:5px; right:5px; margin:0; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                        {{ if eq .Source "local" }}本地歌单{{ else }}{{ .Source }}{{ end }}
+                    </span>
                 </div>
                 <div class="playlist-meta">
                     <div class="playlist-title">
@@ -371,7 +382,17 @@
                         {{ end }}
                     </div>
                     <div class="playlist-author"><i class="fa-regular fa-user"></i> {{ .Creator }}</div>
-                    <div class="playlist-count">共 {{ .TrackCount }} 首</div>
+                    
+                    <div style="display:flex; justify-content: space-between; align-items: flex-end; margin-top: auto;">
+                        <div class="playlist-count">共 {{ .TrackCount }} 首</div>
+                        
+                        {{ if eq .Source "local" }}
+                        <div style="display:flex; gap:6px;">
+                            <button class="col-action-btn" onclick="event.stopPropagation(); showEditCollectionModal('{{.ID}}', '{{.Name}}', '{{.Description}}', '{{.Cover}}')" title="编辑歌单"><i class="fa-solid fa-pen"></i></button>
+                            <button class="col-action-btn del" onclick="event.stopPropagation(); deleteCollection('{{.ID}}')" title="删除歌单"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                        {{ end }}
+                    </div>
                 </div>
             </div>
             {{ end }}
@@ -379,17 +400,26 @@
     {{ else if .Result }}
         <div class="list-header">
             <div>
+                {{ if .ColID }}
+                <span class="result-count" style="font-size: 16px;"><i class="fa-solid fa-folder-open"></i> 正在查看: <span style="color:#10b981; margin-left: 5px;">{{ .ColName }}</span> (共 {{ len .Result }} 首)</span>
+                {{ else }}
                 <span class="result-count"><i class="fa-solid fa-music"></i> 找到 <span class="count">{{ len .Result }}</span> 首歌曲</span>
                 {{ if .PlaylistLink }}
                     <a href="{{ .PlaylistLink }}" target="_blank" class="playlist-source-link">
                         <i class="fa-solid fa-arrow-up-right-from-square"></i> 打开原始歌单
                     </a>
                 {{ end }}
+                {{ end }}
             </div>
 
-            <button type="button" class="ctrl-btn primary" id="btn-batch-toggle" onclick="toggleBatchMode()">
-                <i class="fa-solid fa-list-check"></i> 批量操作
-            </button>
+            <div style="display:flex; gap:10px;">
+                <button type="button" class="ctrl-btn primary" onclick="playAllSongs()">
+                    <i class="fa-solid fa-play"></i> 播放全部
+                </button>
+                <button type="button" class="ctrl-btn primary" id="btn-batch-toggle" onclick="toggleBatchMode()">
+                    <i class="fa-solid fa-list-check"></i> 批量操作
+                </button>
+            </div>
         </div>
 
         <div class="batch-toolbar" id="batch-toolbar">
@@ -448,7 +478,7 @@
                     </div>
                     <div class="tags">
                         <span class="tag tag-src">{{ .Source }}</span>
-                        {{ if .FormatDuration }}<span class="tag">{{ .FormatDuration }}</span>{{ end }}
+                        <span class="tag tag-duration">{{ if .FormatDuration }}{{ .FormatDuration }}{{ else }}-{{ end }}</span>
                         <span class="tag tag-loading" id="size-{{.ID}}"><i class="fa fa-spinner fa-spin"></i></span>
                         <span class="tag tag-loading" id="bitrate-{{.ID}}"><i class="fa fa-circle-notch fa-spin"></i></span>
                     </div>
@@ -465,10 +495,17 @@
                         <i class="fa-solid fa-arrows-rotate"></i>
                     </button>
                     
-                    <button type="button" class="btn-circle btn-fav" title="添加到收藏夹"
+                    {{ if $.ColID }}
+                    <button type="button" class="btn-circle btn-fav" title="移出当前歌单"
+                            onclick="removeSongFromCollection(this, '{{$.ColID}}', '{{.ID}}', '{{.Source}}')">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                    {{ else }}
+                    <button type="button" class="btn-circle btn-fav" title="收藏到自制歌单"
                             onclick="openAddToCollectionModal(this)">
                         <i class="fa-regular fa-heart"></i>
                     </button>
+                    {{ end }}
 
                     <a href="{{$.Root}}/download?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}" 
                        id="dl-{{.ID}}" class="btn-circle btn-dl btn-download" title="下载歌曲" target="_blank">
@@ -518,20 +555,27 @@
     </div>
 </div>
 
-<div id="collectionManagerModal" class="modal-overlay">
-    <div class="modal">
+<div id="editCollectionModal" class="modal-overlay">
+    <div class="modal" style="max-width: 400px;">
         <div class="modal-header">
-            <h3>我的收藏夹</h3>
-            <div class="modal-close" onclick="document.getElementById('collectionManagerModal').style.display='none'"><i class="fa-solid fa-xmark"></i></div>
+            <h3 id="editColTitle">新建歌单</h3>
+            <div class="modal-close" onclick="document.getElementById('editCollectionModal').style.display='none'"><i class="fa-solid fa-xmark"></i></div>
         </div>
         <div class="modal-body">
-            <div class="create-col-form">
-                <input type="text" id="newColName" placeholder="新建收藏夹名称..." maxlength="20">
-                <button type="button" class="btn-pill btn-pill-primary" onclick="createCollection()">创建</button>
+            <input type="hidden" id="editColId">
+            <div class="cookie-item">
+                <label>歌单名称 <span style="color:#e53e3e;">*</span></label>
+                <input type="text" id="editColName" placeholder="例如: 睡前听的歌" maxlength="30">
             </div>
-            <div id="colList" class="cookie-list" style="min-height: 150px;">
-                <div style="text-align: center; color: #a0aec0; padding: 20px;">加载中...</div>
+            <div class="cookie-item">
+                <label>描述</label>
+                <input type="text" id="editColDesc" placeholder="简单描述一下...">
             </div>
+            <div class="cookie-item">
+                <label>封面图片 (URL)</label>
+                <input type="text" id="editColCover" placeholder="留空则自动为您生成随机精美封面">
+            </div>
+            <button type="button" class="btn-save" onclick="saveCollection()">保存歌单</button>
         </div>
     </div>
 </div>
@@ -539,27 +583,12 @@
 <div id="addToCollectionModal" class="modal-overlay">
     <div class="modal" style="max-width: 400px;">
         <div class="modal-header">
-            <h3>保存到收藏夹</h3>
+            <h3>收藏到我的歌单</h3>
             <div class="modal-close" onclick="document.getElementById('addToCollectionModal').style.display='none'"><i class="fa-solid fa-xmark"></i></div>
         </div>
         <div class="modal-body">
-            <div id="addColList" class="cookie-list">
+            <div id="addColList">
             </div>
-        </div>
-    </div>
-</div>
-
-<div id="collectionDetailModal" class="modal-overlay">
-    <div class="modal" style="max-width: 600px;">
-        <div class="modal-header">
-            <h3 id="colDetailTitle">收藏内容</h3>
-            <div class="modal-close" onclick="document.getElementById('collectionDetailModal').style.display='none'"><i class="fa-solid fa-xmark"></i></div>
-        </div>
-        <div style="margin-bottom: 15px; display: flex; gap: 10px;">
-            <button class="btn-pill btn-pill-primary" onclick="playCurrentCollection()"><i class="fa-solid fa-play"></i> 播放全部</button>
-        </div>
-        <div class="modal-body" id="colSongsList" style="background:#f8fafc; border-radius: 12px; padding: 10px;">
-            <div style="text-align: center; color: #a0aec0; padding: 20px;">加载中...</div>
         </div>
     </div>
 </div>
