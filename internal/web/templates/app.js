@@ -25,13 +25,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     cards.forEach(card => {
-        const coverBtn = card.querySelector('.btn-cover');
-        if (!coverBtn) return;
-        const cover = card.dataset.cover || '';
-        coverBtn.style.display = cover ? '' : 'none';
-    });
-
-    cards.forEach(card => {
         const coverWrap = card.querySelector('.cover-wrapper');
         if (!coverWrap) return;
         
@@ -384,12 +377,9 @@ function updateCardWithSong(card, song) {
 
     const coverBtn = card.querySelector('.btn-cover');
     if (coverBtn) {
-        if (song.cover) {
-            coverBtn.style.display = '';
-            coverBtn.href = `${API_ROOT}/download_cover?url=${encodeURIComponent(song.cover)}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
-        } else {
-            coverBtn.style.display = 'none';
-        }
+        // 让新卡片的封面按钮始终能够使用或使用占位图响应
+        let targetCoverUrl = song.cover || 'https://via.placeholder.com/600?text=No+Cover';
+        coverBtn.href = `${API_ROOT}/download_cover?url=${encodeURIComponent(targetCoverUrl)}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
     }
 
     const sizeTag = card.querySelector('[id^="size-"]');
@@ -683,7 +673,6 @@ function batchSwitchSource() {
 
 let pendingFavSong = null;
 
-// 一键播放当前列表所有音乐
 function playAllSongs() {
     const firstPlayBtn = document.querySelector('.song-card .btn-play');
     if (firstPlayBtn) {
@@ -693,19 +682,16 @@ function playAllSongs() {
     }
 }
 
-// 导航到"我的自制歌单"页面瀑布流
 function openCollectionManager() {
     window.location.href = API_ROOT + '/my_collections';
 }
 
-// 展示"新建/编辑歌单"面板
 function showEditCollectionModal(id = '', name = '', desc = '', cover = '') {
     document.getElementById('editColTitle').textContent = id ? '编辑歌单' : '新建歌单';
     document.getElementById('editColId').value = id;
     document.getElementById('editColName').value = name;
     document.getElementById('editColDesc').value = desc;
     
-    // 如果是随机网络生成的 picsum.photos 图，则在编辑框中留空，方便用户修改
     if (cover && cover.includes('picsum.photos')) {
         document.getElementById('editColCover').value = '';
     } else {
@@ -715,7 +701,6 @@ function showEditCollectionModal(id = '', name = '', desc = '', cover = '') {
     document.getElementById('editCollectionModal').style.display = 'flex';
 }
 
-// 保存歌单信息（智能判断当前环境进行局部刷新）
 function saveCollection() {
     const id = document.getElementById('editColId').value;
     const name = document.getElementById('editColName').value.trim();
@@ -740,16 +725,13 @@ function saveCollection() {
         document.getElementById('editCollectionModal').style.display = 'none';
         
         if (isAddingSongModalOpen) {
-            // 如果是在搜索界面添加歌曲的过程中调用的新建/编辑，只局部刷新弹窗列表
             refreshAddToCollectionList();
         } else {
-            // 如果是在主歌单管理界面调用的，则刷新网页
             window.location.reload();
         }
     });
 }
 
-// 主歌单瀑布流页面的删除
 function deleteCollection(id) {
     if (!confirm('确定删除此歌单吗？内含歌曲记录也将被清空！')) return;
     fetch(`${API_ROOT}/collections/${id}`, { method: 'DELETE' })
@@ -760,7 +742,6 @@ function deleteCollection(id) {
         });
 }
 
-// Modal 弹窗内的删除(局部刷新)
 function deleteCollectionFromModal(id) {
     if (!confirm('确定删除此歌单吗？内含歌曲记录也将被清空！')) return;
     fetch(`${API_ROOT}/collections/${id}`, { method: 'DELETE' })
@@ -771,7 +752,6 @@ function deleteCollectionFromModal(id) {
         });
 }
 
-// 抽取出来的弹窗列表渲染函数（支持动态刷新）
 function refreshAddToCollectionList() {
     const container = document.getElementById('addColList');
     container.innerHTML = '<div style="text-align: center; color: #a0aec0; padding: 20px;">加载中...</div>';
@@ -787,12 +767,11 @@ function refreshAddToCollectionList() {
             data.forEach(col => {
                 const item = document.createElement('div');
                 item.className = 'collection-item';
-                item.style.cursor = 'default'; // 取消父级 hover 样式，由子元素控制
+                item.style.cursor = 'default'; 
                 
                 let cvr = col.cover;
                 if (!cvr) cvr = `https://picsum.photos/seed/col_${col.id}/400/400`;
 
-                // 完全通过原生 DOM 事件绑定，避免单引号/双引号带来的字符串转义崩溃
                 item.innerHTML = `
                     <div class="col-clickable-area" style="display:flex; align-items:center; flex:1; overflow:hidden; cursor:pointer;" title="收藏到此歌单">
                         <img src="${cvr}" style="width:40px;height:40px;border-radius:6px;object-fit:cover;margin-right:12px;">
@@ -821,7 +800,6 @@ function refreshAddToCollectionList() {
         });
 }
 
-// 点击红心添加到歌单的入口逻辑
 function openAddToCollectionModal(btn) {
     const card = btn.closest('.song-card');
     if (!card) return;
@@ -844,7 +822,6 @@ function openAddToCollectionModal(btn) {
     refreshAddToCollectionList();
 }
 
-// 确认投递进指定歌单
 function addSongToCollection(colId) {
     if (!pendingFavSong) return;
     
@@ -862,7 +839,6 @@ function addSongToCollection(colId) {
     });
 }
 
-// 将歌曲从当前歌单中抹除
 function removeSongFromCollection(btn, colId, originalSongId, originalSource) {
     if (!confirm('确定将此歌曲移出当前歌单吗？')) return;
     fetch(`${API_ROOT}/collections/${colId}/songs?id=${encodeURIComponent(originalSongId)}&source=${encodeURIComponent(originalSource)}`, { method: 'DELETE' })
