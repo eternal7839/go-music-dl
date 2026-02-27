@@ -708,21 +708,37 @@
         }
       },
   
-      togglePlay: function () {
-        if (this.isLocalAudio && this.localAudio) {
-            this.localAudio.paused ? this.localAudio.play() : this.localAudio.pause();
-        } else {
-            if (!this.data || !window.ap) return;
-            if (window.currentPlayingId === this.data.id) window.ap.toggle();
-            else if (typeof window.playAllAndJumpToId === 'function') window.playAllAndJumpToId(this.data.id);
-        }
-      },
+            // === 新增：上一首 / 下一首 ===
+            playPrev: function() {
+                    if (this.isLocalAudio) return alert("本地预览模式下无法切换歌曲");
+                    if (window.ap && window.ap.list && window.ap.list.audios && window.ap.list.audios.length > 0) {
+                            window.ap.skipBack && window.ap.skipBack();
+                            if (window.ap.audio && window.ap.audio.paused) window.ap.play();
+                    }
+            },
+            playNext: function() {
+                    if (this.isLocalAudio) return alert("本地预览模式下无法切换歌曲");
+                    if (window.ap && window.ap.list && window.ap.list.audios && window.ap.list.audios.length > 0) {
+                            window.ap.skipForward && window.ap.skipForward();
+                            if (window.ap.audio && window.ap.audio.paused) window.ap.play();
+                    }
+            },
 
-      updatePlayUI: function () {
-        const i = document.querySelector("#vg-play-toggle i"), m = document.getElementById("vg-modal");
-        if (i) i.className = this.isPlaying ? "fa-solid fa-pause" : "fa-solid fa-play";
-        if (m) this.isPlaying ? m.classList.add("playing") : m.classList.remove("playing");
-      },
+            togglePlay: function () {
+                if (this.isLocalAudio && this.localAudio) {
+                        this.localAudio.paused ? this.localAudio.play() : this.localAudio.pause();
+                } else {
+                        if (!this.data || !window.ap) return;
+                        if (window.currentPlayingId === this.data.id) window.ap.toggle();
+                        else if (typeof window.playAllAndJumpToId === 'function') window.playAllAndJumpToId(this.data.id);
+                }
+            },
+
+            updatePlayUI: function () {
+                const i = document.getElementById("vg-play-toggle-icon"), m = document.getElementById("vg-modal");
+                if (i) i.className = this.isPlaying ? "fa-solid fa-pause" : "fa-solid fa-play";
+                if (m) this.isPlaying ? m.classList.add("playing") : m.classList.remove("playing");
+            },
 
       syncLyrics: function () {
         const audioEl = this.isLocalAudio ? this.localAudio : (window.ap && window.ap.audio);
