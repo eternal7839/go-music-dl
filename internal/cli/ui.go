@@ -38,7 +38,7 @@ import (
 
 // --- 常量与样式 ---
 const (
-	CookieFile = "cookies.json"
+	CookieFile = "data/cookies.json"
 	UA_Common  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
 )
 
@@ -706,9 +706,9 @@ func (m modelState) updateDownloading(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case downloadOneFinishedMsg:
 		m.downloaded++
 
-		resultStr := fmt.Sprintf("已完成: %s - %s", msg.song.Artist, msg.song.Name)
+		resultStr := fmt.Sprintf("已完成: %s - %s", msg.song.Name, msg.song.Artist)
 		if msg.err != nil {
-			resultStr = fmt.Sprintf("❌ 失败: %s - %s (%v)", msg.song.Artist, msg.song.Name, msg.err)
+			resultStr = fmt.Sprintf("❌ 失败: %s - %s (%v)", msg.song.Name, msg.song.Artist, msg.err)
 		}
 		m.statusMsg = resultStr
 
@@ -1051,7 +1051,7 @@ func downloadSongWithCookie(song *model.Song, outDir string, withCover bool, wit
 		return err
 	}
 
-	fileName := fmt.Sprintf("%s - %s", utils.SanitizeFilename(song.Artist), utils.SanitizeFilename(song.Name))
+	fileName := fmt.Sprintf("%s - %s", utils.SanitizeFilename(song.Name), utils.SanitizeFilename(song.Artist))
 	filePath := filepath.Join(outDir, fileName+".mp3")
 
 	// 2. 获取下载数据
@@ -1471,7 +1471,7 @@ func (m modelState) View() string {
 		s.WriteString(fmt.Sprintf("%s 正在处理: %d/%d\n", m.spinner.View(), m.downloaded, m.totalToDl))
 		if len(m.downloadQueue) > 0 {
 			current := m.downloadQueue[0]
-			s.WriteString(lipgloss.NewStyle().Foreground(yellowColor).Render(fmt.Sprintf("-> %s - %s", current.Artist, current.Name)))
+			s.WriteString(lipgloss.NewStyle().Foreground(yellowColor).Render(fmt.Sprintf("-> %s - %s", current.Name, current.Artist)))
 		}
 		s.WriteString("\n\n" + lipgloss.NewStyle().Foreground(subtleColor).Render(m.statusMsg))
 	case stateSwitching:

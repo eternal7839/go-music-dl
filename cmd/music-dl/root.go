@@ -92,7 +92,7 @@ func init() {
 	// [优化] 明确提示可用源
 	rootCmd.Flags().StringSliceVarP(&sources, "sources", "s", []string{}, "指定搜索源，用逗号分隔 (e.g. netease,qq,kugou)")
 
-	rootCmd.Flags().StringVarP(&outDir, "outdir", "o", "downloads", "指定下载目录")
+	rootCmd.Flags().StringVarP(&outDir, "outdir", "o", "data/downloads", "指定下载目录")
 	rootCmd.Flags().BoolVar(&withCover, "cover", true, "同时下载封面图片 (默认开启，使用 --cover=false 关闭)")
 	rootCmd.Flags().BoolVarP(&withLyrics, "lyrics", "l", true, "同时下载歌词 (默认开启，使用 --lyrics=false 关闭)")
 }

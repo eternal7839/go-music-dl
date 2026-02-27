@@ -1,6 +1,5 @@
 services:
   music-dl:
-    # 强制在本地使用 Dockerfile 进行实时构建
     build: 
       context: .
       dockerfile: Dockerfile
@@ -9,15 +8,10 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - music_data_downloads:/home/appuser/downloads
-      - music_data_cookies:/home/appuser/cookies.json
-      - music_data_favorites:/home/appuser/favorites.db
+      - music_data:/home/appuser/data
     environment:
       - TZ=Asia/Shanghai
     user: "1000:1000"
 
-# 声明命名卷
 volumes:
-  music_data_downloads:
-  music_data_cookies:
-  music_data_favorites:
+  music_data:

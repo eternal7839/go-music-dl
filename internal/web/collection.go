@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -21,7 +22,6 @@ type Collection struct {
 	Description string    `json:"description"`
 	Cover       string    `json:"cover"`
 	CreatedAt   time.Time `json:"created_at"`
-	// 配置外键以及级联删除
 	SavedSongs  []SavedSong `gorm:"constraint:OnDelete:CASCADE;" json:"-"`
 }
 
@@ -41,21 +41,22 @@ type SavedSong struct {
 
 // InitDB 初始化 GORM 与 SQLite
 func InitDB() {
+	// 确保持久化目录 data 存在
+	os.MkdirAll("data", 0755)
+
 	var err error
-	// 开启外键约束，保证联级删除生效
-	db, err = gorm.Open(sqlite.Open("favorites.db?_pragma=foreign_keys(1)"), &gorm.Config{})
+	// 将数据库路径指向 data 目录
+	db, err = gorm.Open(sqlite.Open("data/favorites.db?_pragma=foreign_keys(1)"), &gorm.Config{})
 	if err != nil {
 		panic("Failed to connect to SQLite: " + err.Error())
 	}
 
-	// 自动迁移表结构 (自动建表、增减字段、索引)
 	err = db.AutoMigrate(&Collection{}, &SavedSong{})
 	if err != nil {
 		panic("Failed to migrate database: " + err.Error())
 	}
 }
 
-// CloseDB 提供给 server.go 在退出时关闭连接池
 func CloseDB() {
 	if db != nil {
 		sqlDB, err := db.DB()

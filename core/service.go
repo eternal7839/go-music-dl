@@ -31,7 +31,7 @@ const (
 	UA_Mobile    = "Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Version/9.0 Mobile/13B143 Safari/601.1"
 	Ref_Bilibili = "https://www.bilibili.com/"
 	Ref_Migu     = "http://music.migu.cn/"
-	CookieFile   = "cookies.json"
+	CookieFile   = "data/cookies.json"
 )
 
 // ==========================================
@@ -57,6 +57,8 @@ func (m *CookieManager) Load() {
 func (m *CookieManager) Save() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	// 🌟 确保写入前目录存在
+	os.MkdirAll("data", 0755)
 	data, _ := json.MarshalIndent(m.cookies, "", "  ")
 	_ = os.WriteFile(CookieFile, data, 0644)
 }

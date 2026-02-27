@@ -88,7 +88,7 @@ func Start(port string, shouldOpenBrowser bool) {
 		c.Redirect(http.StatusMovedPermanently, RoutePrefix)
 	})
 
-	videoDir := "video_output"
+	videoDir := "data/video_output"
 	os.MkdirAll(videoDir, 0755)
 
 	api := r.Group(RoutePrefix)

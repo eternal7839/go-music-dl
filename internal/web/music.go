@@ -384,7 +384,7 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		}
 
 		tempSong := &model.Song{ID: id, Source: source, Name: name, Artist: artist}
-		filename := fmt.Sprintf("%s - %s.mp3", artist, name)
+		filename := fmt.Sprintf("%s - %s.mp3", name, artist)
 
 		if source == "soda" {
 			cookie := core.CM.Get("soda")
@@ -471,7 +471,7 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 			return
 		}
 
-		filename := fmt.Sprintf("%s - %s.lrc", artist, name)
+		filename := fmt.Sprintf("%s - %s.lrc", name, artist)
 		setDownloadHeader(c, filename)
 		c.String(200, lrc)
 	})
@@ -483,7 +483,7 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		}
 		resp, err := utils.Get(u, utils.WithHeader("User-Agent", core.UA_Common))
 		if err == nil {
-			filename := fmt.Sprintf("%s - %s.jpg", c.Query("artist"), c.Query("name"))
+			filename := fmt.Sprintf("%s - %s.jpg", c.Query("name"), c.Query("artist"))
 			setDownloadHeader(c, filename)
 			c.Data(200, "image/jpeg", resp)
 		}
