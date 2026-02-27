@@ -70,68 +70,63 @@ Go Music DL 是一个音乐搜索与下载工具，支持 **Web 界面**、**TUI
 * 📦 单文件分发，绿色免安装
 * 🖼️ 自定义窗口图标
 * 🔒 使用罕见端口(37777)，避免端口冲突
-* 👻 后台静默运行，不打开额外浏览器窗口
-* 🛑 关闭窗口时自动终止Web服务进程
-* 🗂️ 智能缓存管理，不污染程序目录
 
-#### 下载使用
+### Docker 部署
 
-1. 从 [Releases](https://github.com/guohuiyuan/go-music-dl/releases) 页面下载最新版本的 `go-music-dl-desktop-windows.zip`
-2. 解压到任意目录
-3. 双击运行 `go-music-dl-desktop.exe`
-4. 应用会自动在后台启动Web服务器(端口37777)并打开桌面窗口
+本项目推荐使用 Docker 进行部署，所有数据（包含下载的音乐、视频、数据库、配置文件）均统一持久化在本地的 `data` 目录中，方便备份和迁移。
 
-**注意**: 桌面应用使用罕见端口37777，避免与其他应用的端口冲突。
-
-#### 开发与构建
-
-桌面应用的详细开发指南和构建说明请参考 [desktop/README.md](desktop/README.md)。
-
-#### 系统要求
-
-* Windows 10/11 (推荐)
-* 已安装 WebView2 运行时 (通常已预装)
-* 如遇WebView2错误，可从 [Microsoft官网](https://developer.microsoft.com/microsoft-edge/webview2/) 下载安装
-
-### Web 模式
-
+**⚠️ 极其重要：启动前准备**
+为了保证容器内非 root 用户拥有写入权限，**启动前必须手动创建数据目录并赋予权限**：
 ```bash
-./music-dl web
+mkdir -p data
+chmod 777 data
 
 ```
 
-浏览器会自动打开 `http://localhost:8080/music`。
+#### 1. 生产环境部署（推荐）
 
-#### 命令行选项
-
-* `-p, --port string`: 指定服务端口 (默认 "8080")
-* `--no-browser`: 不自动打开浏览器
+项目包含 `docker-compose.yml` 文件，直接拉取云端预编译镜像，无需在本地构建：
 
 ```bash
-# 指定端口
-./music-dl web -p 3000
-
-# 不自动打开浏览器
-./music-dl web --no-browser
-
-# 组合使用
-./music-dl web -p 3000 --no-browser
-
-```
-
-#### 反向代理配置
-
-如果需要通过 Nginx 等反向代理访问，可以配置路由前缀：
-
-```nginx
-location /music/ {
-    proxy_pass [http://127.0.0.1:8080/music/](http://127.0.0.1:8080/music/);
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
+# 启动服务
 }
 
+# 查看日志
+
+
+# 停止服务
 ```
 
+```
+
+浏览器访问 `http://localhost:8080`。
+
+#### 2. 开发环境部署（本地构建）
+
+如果您修改了源码，希望在本地通过 Docker 重新构建并测试效果，请使用 `docker-compose.dev.yml`：
+
+```bash
+
+
+```
+
+#### 3. 纯命令行模式 (docker run)
+
+如果不使用 Compose，也可以直接通过命令行运行：
+
+```bash
+mkdir -p data && chmod 777 data
+
+docker run -d --name music-dl \
+  -p 8080:8080 \
+  -v $(pwd)/data:/home/appuser/data \
+  -e TZ=Asia/Shanghai \
+  --restart unless-stopped \
+  guohuiyuan/go-music-dl:latest
+
+```
+
+*提示：下载的歌曲、导出的视频、收藏夹数据都会静静地躺在你宿主机的 `data` 文件夹下，随时可以直接拷贝带走。*
 访问地址：`http://your-domain.com/music/`
 
 **注意：** 应用程序已内置路由前缀支持，无需额外配置即可在子路径下正常工作。
@@ -342,9 +337,10 @@ cargo build --release
 **Q: 如何设置 Cookie 获取更高音质？**
 Web 右上角“设置”里可添加平台 Cookie。
 
+
 ## 项目结构
 
-```
+```text
 go-music-dl/
 ├── cmd/
 │   └── music-dl/          # CLI/TUI 主程序
@@ -353,36 +349,23 @@ go-music-dl/
 │   ├── cli/               # TUI 界面 (如: ui.go)
 │   └── web/               # 重构后的 Web 后端服务
 │       ├── templates/     # 前端模板与静态资源分离
-│       │   ├── app.js     # 前端主交互逻辑
-│       │   ├── style.css  # 核心样式
-│       │   ├── videogen.js# 视频生成可视化逻辑
-│       │   └── *.html     # 各个页面模板
 │       ├── server.go      # Web 服务主入口
 │       ├── music.go       # 音乐搜索与解析路由
-│       ├── collection.go  # 本地自制歌单接口
+│       ├── collection.go  # 本地自制歌单接口 (GORM)
 │       └── videogen.go    # 视频生成后端支持
 ├── desktop/               # 桌面应用 (Rust + Tao/Wry)
-│   ├── src/
-│   │   └── main.rs       # 桌面应用主程序
-│   ├── Cargo.toml        # Rust 依赖配置
-│   ├── build.rs          # 构建脚本 (Windows 图标)
-│   ├── icon.png          # 应用图标
-│   ├── README.md         # 桌面应用详细说明
-│   └── target/           # 构建输出目录
+├── data/                  # 🌟 统一数据持久化目录 (Docker挂载点)
+│   ├── downloads/         # 下载的音乐文件
+│   ├── video_output/      # 生成的视频文件
+│   ├── cookies.json       # Cookie 配置文件
+│   └── favorites.db       # 自制歌单 SQLite 数据库
 ├── .github/workflows/     # GitHub Actions 工作流
-│   └── docker.yml        # Docker 镜像自动构建与推送配置
-├── downloads/            # 下载文件目录
-├── screenshots/          # 截图资源
-├── cookies.json          # Cookie 配置文件
-├── favorites.db          # 自制歌单数据库
-├── docker-compose.yml    # Docker 生产环境配置 (直接拉取镜像)
-├── docker-compose.dev.yml# Docker 开发环境配置 (本地构建)
-├── Dockerfile            # Docker 构建配置
-├── go.mod                # Go 模块配置
-├── package.bat           # Windows 打包脚本
-├── run.bat               # Windows 运行脚本
-├── run.sh                # Linux/macOS 运行脚本
-└── README.md             # 主项目说明
+├── screenshots/           # 截图资源
+├── docker-compose.yml     # Docker 生产环境配置 (直接拉取镜像)
+├── docker-compose.dev.yml # Docker 开发环境配置 (本地构建)
+├── Dockerfile             # Docker 构建配置
+├── go.mod                 # Go 模块配置
+└── README.md              # 主项目说明
 
 ```
 

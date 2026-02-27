@@ -6,12 +6,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      # 统一挂载 data 目录，实现大一统持久化
-      - music_data:/home/appuser/data
+      # 🌟 核心修正：挂载到程序实际的运行目录 /home/appuser/data 下
+      - ./data:/home/appuser/data
     environment:
       - TZ=Asia/Shanghai
-    user: "1000:1000"
-
-# 声明单一命名卷
-volumes:
-  music_data:

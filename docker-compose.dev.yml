@@ -8,10 +8,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - music_data:/home/appuser/data
+      # 🌟 核心修正：同样挂载到 /home/appuser/data
+      - ./data:/home/appuser/data
     environment:
       - TZ=Asia/Shanghai
-    user: "1000:1000"
-
-volumes:
-  music_data:

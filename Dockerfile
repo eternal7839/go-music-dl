@@ -19,7 +19,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o music-dl ./cmd/music-dl
 # Runtime stage
 FROM alpine:latest
 
-# [新增] 替换为阿里云镜像源，解决 TLS 连接错误和速度慢的问题
+# 替换为阿里云镜像源，解决 TLS 连接错误和速度慢的问题
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
 # Install ca-certificates for HTTPS requests
@@ -34,10 +34,10 @@ WORKDIR /home/appuser/
 # Copy the binary from builder stage
 COPY --from=builder /app/music-dl .
 
-# Create downloads directory
-RUN mkdir -p downloads
+# 🌟 核心修改：提前创建 data 及其子目录，确保稍后赋权
+RUN mkdir -p data/downloads data/video_output
 
-# Change ownership to non-root user
+# Change ownership to non-root user (包含刚刚创建的 data 目录)
 RUN chown -R appuser:appuser /home/appuser/
 
 # Switch to non-root user
