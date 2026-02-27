@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/gin-gonic/gin v1.11.0
 	github.com/glebarez/sqlite v1.11.0
-	github.com/guohuiyuan/music-lib v1.0.4-0.20260205132601-d0f5c749a645
+	github.com/guohuiyuan/music-lib v1.0.5-0.20260227094523-f74070fcdfe5
 	github.com/spf13/cobra v1.10.2
 	gorm.io/gorm v1.31.1
 )
