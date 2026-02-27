@@ -286,16 +286,21 @@ body.batch-mode .song-card { padding-left: 10px; }
     /* 彻底移除 mask-image 遮罩，解决上下残缺问题 */
     mask-image: none !important;
     -webkit-mask-image: none !important;
+    overflow: visible !important; /* 确保换行后不被容器意外裁剪 */
 }
 .aplayer .aplayer-lrc p {
     font-size: 16px !important; 
-    line-height: 28px !important;
+    line-height: 1.5 !important; /* 改为相对行高，换行后排版更自然 */
     color: #10b981 !important; /* 普通歌词变绿色 */
     opacity: 0 !important;      /* 非当前歌词完全透明（核心修改） */
     height: 0 !important;       /* 非当前歌词高度置0，减少占位 */
     transform: scale(0.95); 
     transition: all 0.3s !important;
     margin: 0 !important; 
+    /* 👇 核心修改：允许文字换行，防止溢出屏幕 */
+    white-space: normal !important; 
+    word-wrap: break-word !important;
+    word-break: break-word !important;
 }
 .aplayer .aplayer-lrc p.aplayer-lrc-current {
     font-size: 24px !important; /* 当前歌词放大 */
@@ -304,6 +309,9 @@ body.batch-mode .song-card { padding-left: 10px; }
     margin: 10px 0 !important; 
     transform: scale(1);
     color: #10b981 !important; 
+    /* 👇 核心修改：高度设为自适应，否则换行出来的第二行会被隐藏 */
+    height: auto !important; 
+    min-height: 36px !important;
 }
 
 /* 🌟 恢复详情页 (视频生成器) 内歌词的原始透明白色高亮效果 */
@@ -365,7 +373,16 @@ body.batch-mode .song-card { padding-left: 10px; }
     .aplayer.aplayer-fixed .aplayer-lrc {
         bottom: 120px !important; 
         margin-bottom: 0 !important;
-        max-height: 120px !important; 
+        /* 解除手机端的高度限制，留出两行歌词的空间，并限制两侧宽度防止贴边 */
+        max-height: none !important; 
+        width: 90% !important; 
+        margin-left: 5% !important;
+    }
+
+    /* 手机端当前歌词稍微调小一点，防止一行放不下频繁变成三四行 */
+    .aplayer .aplayer-lrc p.aplayer-lrc-current {
+        font-size: 20px !important; 
+        line-height: 1.4 !important;
     }
 
     /* 移动端调整返回顶部按钮位置，依然保持在播放器上方不被挡住 */
