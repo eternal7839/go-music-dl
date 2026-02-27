@@ -75,7 +75,7 @@ func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist,
 func Start(port string, shouldOpenBrowser bool) {
 	core.CM.Load()
 	InitDB()
-	defer db.Close()
+	defer CloseDB()
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
