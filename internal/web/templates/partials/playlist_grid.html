@@ -1,0 +1,49 @@
+{{define "playlist_grid"}}
+{{ if .IsLocalColPage }}
+    <div class="list-header" style="margin-bottom: 20px;">
+        <div>
+            <span class="result-count" style="font-size: 16px;"><i class="fa-solid fa-folder-open"></i> 本地自制歌单 (共 {{ len .Playlists }} 个)</span>
+        </div>
+        <button type="button" class="btn-pill btn-pill-primary" onclick="showEditCollectionModal()">
+            <i class="fa-solid fa-plus"></i> 新建歌单
+        </button>
+    </div>
+{{ end }}
+
+{{ if .Playlists }}
+    <div class="playlist-grid-container">
+        {{ range .Playlists }}
+        <div class="playlist-card" onclick="location.href='{{$.Root}}/{{ if eq .Source "local" }}collection?id={{.ID}}{{ else }}playlist?id={{.ID}}&source={{.Source}}{{ end }}'">
+            <div class="playlist-cover">
+                <img src="{{ .Cover }}" loading="lazy" onerror="this.src='https://via.placeholder.com/400?text=Cover'">
+                <span class="tag {{ if eq .Source "local" }}tag-local{{ else }}tag-src{{ end }}" style="position:absolute; top:5px; right:5px; margin:0; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                    {{ if eq .Source "local" }}本地歌单{{ else }}{{ .Source }}{{ end }}
+                </span>
+            </div>
+            <div class="playlist-meta">
+                <div class="playlist-title">
+                    {{ .Name }}
+                    {{ if .Link }}
+                    <a href="{{ .Link }}" target="_blank" class="external-link-icon" title="去原网页" onclick="event.stopPropagation()">
+                        <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 12px;"></i>
+                    </a>
+                    {{ end }}
+                </div>
+                <div class="playlist-author"><i class="fa-regular fa-user"></i> {{ .Creator }}</div>
+                
+                <div style="display:flex; justify-content: space-between; align-items: flex-end; margin-top: auto;">
+                    <div class="playlist-count">共 {{ .TrackCount }} 首</div>
+                    
+                    {{ if eq .Source "local" }}
+                    <div style="display:flex; gap:6px;">
+                        <button class="col-action-btn" onclick="event.stopPropagation(); showEditCollectionModal('{{.ID}}', '{{.Name}}', '{{.Description}}', '{{.Cover}}')" title="编辑歌单"><i class="fa-solid fa-pen"></i></button>
+                        <button class="col-action-btn del" onclick="event.stopPropagation(); deleteCollection('{{.ID}}')" title="删除歌单"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                    {{ end }}
+                </div>
+            </div>
+        </div>
+        {{ end }}
+    </div>
+{{end}}
+{{end}}

@@ -1,0 +1,138 @@
+{{define "song_list"}}
+{{ if .Result }}
+    <div class="list-header">
+        <div>
+            {{ if .ColID }}
+            <span class="result-count" style="font-size: 16px;"><i class="fa-solid fa-folder-open"></i> 正在查看: <span style="color:#10b981; margin-left: 5px;">{{ .ColName }}</span> (共 {{ len .Result }} 首)</span>
+            {{ else }}
+            <span class="result-count"><i class="fa-solid fa-music"></i> 找到 <span class="count">{{ len .Result }}</span> 首歌曲</span>
+            {{ if .PlaylistLink }}
+                <a href="{{ .PlaylistLink }}" target="_blank" class="playlist-source-link">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i> 打开原始歌单
+                </a>
+            {{ end }}
+            {{ end }}
+        </div>
+
+        <div style="display:flex; gap:10px;">
+            <button type="button" class="ctrl-btn primary" onclick="playAllSongs()">
+                <i class="fa-solid fa-play"></i> 播放全部
+            </button>
+            <button type="button" class="ctrl-btn primary" id="btn-batch-toggle" onclick="toggleBatchMode()">
+                <i class="fa-solid fa-list-check"></i> 批量操作
+            </button>
+        </div>
+    </div>
+
+    <div class="batch-toolbar" id="batch-toolbar">
+        <div class="batch-info">
+            <div>
+                <label><input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this)"> 全选</label>
+                <span style="margin-left: 5px; color: #718096; font-size:12px;">已选 <span id="selected-count" style="color: #10b981; font-weight: bold;">0</span></span>
+            </div>
+            <button class="btn-pill btn-pill-warn" onclick="selectInvalidSongs()">
+                <i class="fa-solid fa-triangle-exclamation"></i> 选择无效
+            </button>
+        </div>
+        <div class="batch-actions">
+            <button class="btn-pill btn-pill-switch" id="btn-batch-switch" onclick="batchSwitchSource()" disabled>
+                <i class="fa-solid fa-arrows-rotate"></i> 批量换源
+            </button>
+            <button class="btn-pill btn-pill-dl" id="btn-batch-dl" onclick="batchDownload()" disabled>
+                <i class="fa-solid fa-download"></i> 批量下载
+            </button>
+        </div>
+    </div>
+
+    <ul class="result-list">
+        {{ range .Result }}
+        <li class="song-card" 
+            data-id="{{.ID}}" 
+            data-source="{{.Source}}" 
+            data-duration="{{.Duration}}" 
+            data-name="{{.Name}}" 
+            data-artist="{{.Artist}}"
+            data-cover="{{.Cover}}">
+            
+            <div class="checkbox-wrapper">
+                <input type="checkbox" class="song-checkbox" onclick="event.stopPropagation(); updateBatchToolbar();">
+            </div>
+
+            <div class="cover-wrapper">
+                {{ if .Cover }}
+                    <img src="{{ .Cover }}" alt="{{ .Name }}" loading="lazy" onerror="this.src='https://via.placeholder.com/150?text=Music'" >
+                {{ else }}
+                    <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:24px;">🎵</div>
+                    <img src="https://via.placeholder.com/150?text=Music" style="display:none;">
+                {{ end }}
+            </div>
+            <div class="song-info">
+                <h3>
+                    {{ if .Link }}
+                        <a href="{{ .Link }}" target="_blank" class="song-title-link" title="打开原始链接">{{ .Name }}</a>
+                    {{ else }}
+                        {{ .Name }}
+                    {{ end }}
+                </h3>
+                <div class="artist-line">
+                    <i class="fa-regular fa-user" style="font-size:11px;"></i> {{ .Artist }}
+                    {{ if .Album }} &nbsp;•&nbsp; {{ .Album }}{{ end }}
+                </div>
+                <div class="tags">
+                    <span class="tag tag-src">{{ .Source }}</span>
+                    <span class="tag tag-duration">{{ if .FormatDuration }}{{ .FormatDuration }}{{ else }}-{{ end }}</span>
+                    <span class="tag tag-loading" id="size-{{.ID}}"><i class="fa fa-spinner fa-spin"></i></span>
+                    <span class="tag tag-loading" id="bitrate-{{.ID}}"><i class="fa fa-circle-notch fa-spin"></i></span>
+                </div>
+            </div>
+            
+            <div class="actions">
+                <button type="button" class="btn-circle btn-play" title="播放"
+                        onclick="playAllAndJumpTo(this)">
+                    <i class="fa-solid fa-play"></i>
+                </button>
+
+                <button type="button" class="btn-circle btn-switch" title="换源"
+                        onclick="switchSource(this)">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                </button>
+                
+                {{ if $.ColID }}
+                <button type="button" class="btn-circle btn-fav" title="移出当前歌单"
+                        onclick="removeSongFromCollection(this, '{{$.ColID}}', '{{.ID}}', '{{.Source}}')">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+                {{ else }}
+                <button type="button" class="btn-circle btn-fav" title="收藏到自制歌单"
+                        onclick="openAddToCollectionModal(this)">
+                    <i class="fa-regular fa-heart"></i>
+                </button>
+                {{ end }}
+
+                <a href="{{$.Root}}/download?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}" 
+                   id="dl-{{.ID}}" class="btn-circle btn-dl btn-download" title="下载歌曲" target="_blank">
+                    <i class="fa-solid fa-download"></i>
+                </a>
+
+                <a href="{{$.Root}}/download_lrc?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}" 
+                   id="lrc-{{.ID}}" class="btn-circle btn-dl btn-lyric" title="下载歌词" target="_blank">
+                    <i class="fa-solid fa-file-lines"></i>
+                </a>
+
+                <a href="{{$.Root}}/download_cover?url={{ .Cover }}&name={{ .Name }}&artist={{ .Artist }}" 
+                   class="btn-circle btn-dl btn-cover" title="下载封面" target="_blank">
+                    <i class="fa-regular fa-image"></i>
+                </a>
+            </div>
+        </li>
+        {{ end }}
+    </ul>
+{{ else if .Keyword }}
+    {{ if not .Error }}
+    <div class="no-results">
+        <i class="fa-solid fa-music" style="font-size: 40px; margin-bottom: 10px; display:block;"></i>
+        <p>未找到符合条件的资源</p>
+    </div>
+    {{ end }}
+{{ end }}
+{{end}}

@@ -81,7 +81,10 @@ func Start(port string, shouldOpenBrowser bool) {
 	r := gin.Default()
 	r.Use(corsMiddleware())
 
-	tmpl := template.Must(template.New("").ParseFS(templateFS, "templates/*.html"))
+	tmpl := template.Must(template.New("").ParseFS(templateFS,
+		"templates/pages/*.html",
+		"templates/partials/*.html",
+	))
 	r.SetHTMLTemplate(tmpl)
 
 	r.GET("/", func(c *gin.Context) {
@@ -95,10 +98,11 @@ func Start(port string, shouldOpenBrowser bool) {
 	api.Static("/videos", videoDir)
 
 	// 基础前端依赖路由
-	api.GET("/icon.png", func(c *gin.Context) { c.FileFromFS("templates/icon.png", http.FS(templateFS)) })
-	api.GET("/style.css", func(c *gin.Context) { c.FileFromFS("templates/style.css", http.FS(templateFS)) })
-	api.GET("/videogen.js", func(c *gin.Context) { c.FileFromFS("templates/videogen.js", http.FS(templateFS)) })
-	api.GET("/app.js", func(c *gin.Context) { c.FileFromFS("templates/app.js", http.FS(templateFS)) })
+	api.GET("/icon.png", func(c *gin.Context) { c.FileFromFS("templates/static/images/icon.png", http.FS(templateFS)) })
+	api.GET("/style.css", func(c *gin.Context) { c.FileFromFS("templates/static/css/style.css", http.FS(templateFS)) })
+	api.GET("/videogen.css", func(c *gin.Context) { c.FileFromFS("templates/static/css/videogen.css", http.FS(templateFS)) })
+	api.GET("/videogen.js", func(c *gin.Context) { c.FileFromFS("templates/static/js/videogen.js", http.FS(templateFS)) })
+	api.GET("/app.js", func(c *gin.Context) { c.FileFromFS("templates/static/js/app.js", http.FS(templateFS)) })
 	api.GET("/render", func(c *gin.Context) { c.HTML(200, "render.html", gin.H{"Root": RoutePrefix}) })
 
 	api.GET("/cookies", func(c *gin.Context) { c.JSON(200, core.CM.GetAll()) })

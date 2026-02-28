@@ -1,0 +1,65 @@
+{{define "modals"}}
+<div id="cookieModal" class="modal-overlay" style="z-index: 1001;">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>设置 Cookies</h3>
+            <div class="modal-close" onclick="document.getElementById('cookieModal').style.display='none'"><i class="fa-solid fa-xmark"></i></div>
+        </div>
+        <div class="modal-body">
+            <div class="cookie-list">
+                {{ range $source := .AllSources }}
+                <div class="cookie-item">
+                    <label>{{ $source }}</label>
+                    <input type="text" id="cookie-{{$source}}" placeholder="在此粘贴 Cookie...">
+                </div>
+                {{ end }}
+            </div>
+            <button class="btn-save" onclick="saveCookies()">保存设置</button>
+        </div>
+    </div>
+</div>
+
+<div id="editCollectionModal" class="modal-overlay" style="z-index: 1005;">
+    <div class="modal" style="max-width: 400px;">
+        <div class="modal-header">
+            <h3 id="editColTitle">新建歌单</h3>
+            <div class="modal-close" onclick="document.getElementById('editCollectionModal').style.display='none'"><i class="fa-solid fa-xmark"></i></div>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="editColId">
+            <div class="cookie-item">
+                <label>歌单名称 <span style="color:#e53e3e;">*</span></label>
+                <input type="text" id="editColName" placeholder="例如: 睡前听的歌" maxlength="30">
+            </div>
+            <div class="cookie-item">
+                <label>描述</label>
+                <input type="text" id="editColDesc" placeholder="简单描述一下...">
+            </div>
+            <div class="cookie-item">
+                <label>封面图片 (URL)</label>
+                <input type="text" id="editColCover" placeholder="留空则自动为您生成随机精美封面">
+            </div>
+            <button type="button" class="btn-save" onclick="saveCollection()">保存歌单</button>
+        </div>
+    </div>
+</div>
+
+<div id="addToCollectionModal" class="modal-overlay" style="z-index: 1004;">
+    <div class="modal" style="max-width: 400px;">
+        <div class="modal-header">
+            <h3>收藏到我的歌单</h3>
+            <div class="modal-close" onclick="document.getElementById('addToCollectionModal').style.display='none'"><i class="fa-solid fa-xmark"></i></div>
+        </div>
+        <div class="modal-body">
+            <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 14px; color: var(--text-sub);">选择或管理歌单</span>
+                <button class="btn-pill btn-pill-primary" style="padding: 6px 12px; font-size: 12px;" onclick="showEditCollectionModal()">
+                    <i class="fa-solid fa-plus"></i> 新建
+                </button>
+            </div>
+            <div id="addColList">
+                </div>
+        </div>
+    </div>
+</div>
+{{end}}

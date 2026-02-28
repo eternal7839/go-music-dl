@@ -22,8 +22,11 @@ FROM alpine:latest
 # 替换为阿里云镜像源，解决 TLS 连接错误和速度慢的问题
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates
+# Install ca-certificates for HTTPS requests and tzdata for timezone support
+RUN apk --no-cache add ca-certificates tzdata
+
+# Set timezone to Asia/Shanghai
+ENV TZ=Asia/Shanghai
 
 # Create a non-root user
 RUN adduser -D -s /bin/sh appuser
@@ -33,9 +36,6 @@ WORKDIR /home/appuser/
 
 # Copy the binary from builder stage
 COPY --from=builder /app/music-dl .
-
-# 🌟 核心修改：提前创建 data 及其子目录，确保稍后赋权
-RUN mkdir -p data/downloads data/video_output
 
 # Change ownership to non-root user (包含刚刚创建的 data 目录)
 RUN chown -R appuser:appuser /home/appuser/
