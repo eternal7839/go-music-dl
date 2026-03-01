@@ -1,6 +1,6 @@
 services:
   music-dl:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
     container_name: music-dl-dev
@@ -12,3 +12,4 @@ services:
       - ./data:/home/appuser/data
     environment:
       - TZ=Asia/Shanghai
+    command: [ "./music-dl", "web", "--port", "8080", "--no-browser", "--vg-cover", "--vg-audio", "--vg-lyric", "--vg-export" ]

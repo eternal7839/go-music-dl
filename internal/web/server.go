@@ -20,6 +20,16 @@ var templateFS embed.FS
 
 const RoutePrefix = "/music"
 
+// FeatureFlags 控制前端功能按钮的显示
+type FeatureFlags struct {
+	VgChangeCover bool
+	VgChangeAudio bool
+	VgChangeLyric bool
+	VgExportVideo bool
+}
+
+var featureFlags FeatureFlags
+
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		method := c.Request.Method
@@ -69,10 +79,15 @@ func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist,
 		"ColID":              colID,
 		"ColName":            colName,
 		"IsLocalColPage":     isLocalColPage,
+		"VgChangeCover":      featureFlags.VgChangeCover,
+		"VgChangeAudio":      featureFlags.VgChangeAudio,
+		"VgChangeLyric":      featureFlags.VgChangeLyric,
+		"VgExportVideo":      featureFlags.VgExportVideo,
 	})
 }
 
-func Start(port string, shouldOpenBrowser bool) {
+func Start(port string, shouldOpenBrowser bool, flags FeatureFlags) {
+	featureFlags = flags
 	core.CM.Load()
 	InitDB()
 	defer CloseDB()
@@ -103,7 +118,12 @@ func Start(port string, shouldOpenBrowser bool) {
 	api.GET("/videogen.css", func(c *gin.Context) { c.FileFromFS("templates/static/css/videogen.css", http.FS(templateFS)) })
 	api.GET("/videogen.js", func(c *gin.Context) { c.FileFromFS("templates/static/js/videogen.js", http.FS(templateFS)) })
 	api.GET("/app.js", func(c *gin.Context) { c.FileFromFS("templates/static/js/app.js", http.FS(templateFS)) })
-	api.GET("/render", func(c *gin.Context) { c.HTML(200, "render.html", gin.H{"Root": RoutePrefix}) })
+	api.GET("/render", func(c *gin.Context) {
+		c.HTML(200, "render.html", gin.H{
+			"Root":          RoutePrefix,
+			"VgExportVideo": featureFlags.VgExportVideo,
+		})
+	})
 
 	api.GET("/cookies", func(c *gin.Context) { c.JSON(200, core.CM.GetAll()) })
 	api.POST("/cookies", func(c *gin.Context) {

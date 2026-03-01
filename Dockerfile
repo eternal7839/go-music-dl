@@ -46,5 +46,5 @@ USER appuser
 # Expose port 8080
 EXPOSE 8080
 
-# Run the web server by default
-CMD ["./music-dl", "web", "--port", "8080"]
+# Run the web server by default (videogen buttons disabled, add flags to enable)
+CMD ["./music-dl", "web", "--port", "8080", "--no-browser"]
