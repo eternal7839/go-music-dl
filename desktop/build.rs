@@ -6,7 +6,7 @@ fn main() {
     {
         // 创建一个新的 Windows 资源项
         let mut res = winres::WindowsResource::new();
-        
+
         // 设置图标路径。
         // 这里假设 "icon.ico" 位于你的 Cargo.toml 文件所在的目录（即 desktop 目录）。
         res.set_icon("icon.ico");

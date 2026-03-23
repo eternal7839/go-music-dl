@@ -76,6 +76,7 @@ fn main() -> wry::Result<()> {
                 &server_url,
                 &app_data_dir,
                 Some(&log_path),
+                read_log_tail(&log_path, 80),
             )),
         },
         None => StartupContent::ErrorHtml(build_startup_error_page(
@@ -83,6 +84,7 @@ fn main() -> wry::Result<()> {
             &server_url,
             &app_data_dir,
             Some(&log_path),
+            read_log_tail(&log_path, 80),
         )),
     };
 
@@ -158,10 +160,6 @@ fn main() -> wry::Result<()> {
                     break;
                 }
                 thread::sleep(Duration::from_millis(50));
-            }
-
-            if webview_data_dir.exists() {
-                let _ = fs::remove_dir_all(&webview_data_dir);
             }
 
             *control_flow = ControlFlow::Exit;
@@ -324,12 +322,23 @@ fn build_startup_error_page(
     server_url: &str,
     app_data_dir: &Path,
     log_path: Option<&Path>,
+    log_excerpt: Option<String>,
 ) -> String {
     let log_line = log_path
         .map(|path| {
             format!(
                 "<p><strong>Backend log:</strong> {}</p>",
                 html_escape(&path.display().to_string())
+            )
+        })
+        .unwrap_or_default();
+
+    let log_excerpt_block = log_excerpt
+        .filter(|content| !content.trim().is_empty())
+        .map(|content| {
+            format!(
+                "<p><strong>Last backend log lines:</strong></p><code>{}</code>",
+                html_escape(&content)
             )
         })
         .unwrap_or_default();
@@ -407,6 +416,7 @@ fn build_startup_error_page(
     <p>{}</p>
     <p><strong>App data directory:</strong> {}</p>
     {}
+    {}
     <p>The desktop shell now runs the Go backend from a dedicated writable app-data directory. If this page still appears, the log above will usually show whether the port was already occupied or the backend crashed during startup.</p>
     <code>{}</code>
     <div class="actions">
@@ -419,9 +429,24 @@ fn build_startup_error_page(
         html_escape(message),
         html_escape(&app_data_dir.display().to_string()),
         log_line,
+        log_excerpt_block,
         html_escape(server_url),
         html_escape(server_url),
     )
+}
+
+fn read_log_tail(log_path: &Path, max_lines: usize) -> Option<String> {
+    let raw = fs::read_to_string(log_path).ok()?;
+    let mut lines: Vec<&str> = raw.lines().collect();
+    if lines.len() > max_lines {
+        lines = lines.split_off(lines.len() - max_lines);
+    }
+    let joined = lines.join("\n").trim().to_string();
+    if joined.is_empty() {
+        None
+    } else {
+        Some(joined)
+    }
 }
 
 fn html_escape(value: &str) -> String {
