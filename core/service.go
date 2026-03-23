@@ -2,7 +2,6 @@ package core
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +28,7 @@ import (
 	"github.com/guohuiyuan/music-lib/qianqian"
 	"github.com/guohuiyuan/music-lib/qq"
 	"github.com/guohuiyuan/music-lib/soda"
+	"gorm.io/gorm"
 )
 
 var ErrFFmpegNotFound = errors.New("ffmpeg not found")
@@ -53,21 +53,51 @@ type CookieManager struct {
 var CM = &CookieManager{cookies: make(map[string]string)}
 
 func (m *CookieManager) Load() {
+	if err := ensureConfigDB(); err != nil {
+		return
+	}
+
+	var rows []cookieEntry
+	if err := configDB.Order("source ASC").Find(&rows).Error; err != nil {
+		return
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	data, err := os.ReadFile(CookieFile)
-	if err == nil {
-		_ = json.Unmarshal(data, &m.cookies)
+	m.cookies = make(map[string]string, len(rows))
+	for _, row := range rows {
+		m.cookies[row.Source] = row.Value
 	}
 }
 
 func (m *CookieManager) Save() {
+	if err := ensureConfigDB(); err != nil {
+		return
+	}
+
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	rows := make([]cookieEntry, 0, len(m.cookies))
+	for source, value := range m.cookies {
+		source = strings.TrimSpace(source)
+		value = strings.TrimSpace(value)
+		if source == "" || value == "" {
+			continue
+		}
+		rows = append(rows, cookieEntry{Source: source, Value: value})
+	}
+	m.mu.RUnlock()
+
+	_ = configDB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("1 = 1").Delete(&cookieEntry{}).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		return tx.Create(&rows).Error
+	})
 	// 🌟 确保写入前目录存在
 	os.MkdirAll("data", 0755)
-	data, _ := json.MarshalIndent(m.cookies, "", "  ")
-	_ = os.WriteFile(CookieFile, data, 0644)
 }
 
 func (m *CookieManager) Get(source string) string {

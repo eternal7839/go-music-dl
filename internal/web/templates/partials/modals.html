@@ -18,9 +18,21 @@
                 <label class="setting-toggle" for="setting-embed-download">
                     <input type="checkbox" id="setting-embed-download">
                     <span class="setting-switch" aria-hidden="true"></span>
-                    <span class="setting-toggle-text">下载时内嵌元数据（封面/歌词）</span>
+                    <span class="setting-toggle-text">下载时内嵌元数据（封面、歌词）</span>
                 </label>
                 <p class="setting-hint">为保证下载速度，默认关闭内嵌；关闭时使用流式下载。</p>
+            </div>
+            <div class="cookie-item setting-item">
+                <label class="setting-toggle" for="setting-download-to-local">
+                    <input type="checkbox" id="setting-download-to-local">
+                    <span class="setting-switch" aria-hidden="true"></span>
+                    <span class="setting-toggle-text">下载时直接保存到本地目录</span>
+                </label>
+                <p class="setting-hint">开启后，点击“下载”将由程序直接写入指定目录，而不是由浏览器弹窗下载。</p>
+            </div>
+            <div class="cookie-item">
+                <label for="setting-download-dir">本地下载目录</label>
+                <input type="text" id="setting-download-dir" placeholder="例如: data/downloads">
             </div>
             <button class="btn-save" onclick="saveCookies()">保存设置</button>
         </div>
@@ -45,7 +57,7 @@
             </div>
             <div class="cookie-item">
                 <label>封面图片 (URL)</label>
-                <input type="text" id="editColCover" placeholder="留空则自动为您生成随机精美封面">
+                <input type="text" id="editColCover" placeholder="留空则自动生成随机封面">
             </div>
             <button type="button" class="btn-save" onclick="saveCollection()">保存歌单</button>
         </div>
@@ -65,8 +77,7 @@
                     <i class="fa-solid fa-plus"></i> 新建
                 </button>
             </div>
-            <div id="addColList">
-                </div>
+            <div id="addColList"></div>
         </div>
     </div>
 </div>

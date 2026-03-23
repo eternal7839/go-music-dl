@@ -142,6 +142,7 @@ jobs:
           # 1. 创建 .app 目录结构
           mkdir -p bundle/MusicDL.app/Contents/MacOS
           mkdir -p bundle/MusicDL.app/Contents/Resources
+          mkdir -p bundle/dmg-root
           
           # 2. 复制二进制文件
           cp desktop/target/${{ matrix.target }}/release/go-music-dl-desktop bundle/MusicDL.app/Contents/MacOS/MusicDL
@@ -171,7 +172,8 @@ jobs:
           codesign --force --deep --sign - bundle/MusicDL.app || true
 
           # 6. 生成安装包
-          create-dmg --volname "MusicDL Installer" --window-pos 200 120 --window-size 800 400 --app-drop-link 600 185 "go-music-dl-desktop-macos-${{ matrix.arch_name }}.dmg" "bundle/MusicDL.app"
+          cp -R bundle/MusicDL.app bundle/dmg-root/
+          create-dmg --volname "MusicDL Installer" --window-pos 200 120 --window-size 800 400 --app-drop-link 600 185 "go-music-dl-desktop-macos-${{ matrix.arch_name }}.dmg" "bundle/dmg-root"
           productbuild --component bundle/MusicDL.app /Applications "go-music-dl-desktop-macos-${{ matrix.arch_name }}.pkg"
 
       - name: Upload Artifacts

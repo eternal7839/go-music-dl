@@ -5,29 +5,85 @@ const WEB_SETTINGS_KEY = 'musicdl:web_settings';
 const INSPECT_REQUEST_DELAY_MS = 100;
 
 let webSettings = {
-    embedDownload: false
+    embedDownload: false,
+    downloadToLocal: false,
+    downloadDir: 'data/downloads'
 };
 
-function loadWebSettings() {
-    try {
-        const raw = localStorage.getItem(WEB_SETTINGS_KEY);
-        if (!raw) return;
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed.embedDownload === 'boolean') {
-            webSettings.embedDownload = parsed.embedDownload;
-        }
-    } catch (_) {
+function normalizeWebSettings(raw) {
+    const next = {
+        embedDownload: false,
+        downloadToLocal: false,
+        downloadDir: 'data/downloads'
+    };
+
+    if (!raw || typeof raw !== 'object') {
+        return next;
     }
+
+    if (typeof raw.embedDownload === 'boolean') {
+        next.embedDownload = raw.embedDownload;
+    }
+    if (typeof raw.downloadToLocal === 'boolean') {
+        next.downloadToLocal = raw.downloadToLocal;
+    }
+    if (typeof raw.downloadDir === 'string' && raw.downloadDir.trim() !== '') {
+        next.downloadDir = raw.downloadDir.trim();
+    }
+
+    return next;
 }
 
-function saveWebSettings() {
+function loadWebSettingsFromCache() {
+    try {
+        const raw = localStorage.getItem(WEB_SETTINGS_KEY);
+        if (!raw) return webSettings;
+        webSettings = normalizeWebSettings(JSON.parse(raw));
+    } catch (_) {
+    }
+    return webSettings;
+}
+
+function persistWebSettingsCache() {
     try {
         localStorage.setItem(WEB_SETTINGS_KEY, JSON.stringify(webSettings));
     } catch (_) {
     }
 }
 
-function buildDownloadURL(id, source, name, artist, cover, extra) {
+function applyWebSettings(settings) {
+    webSettings = normalizeWebSettings(settings);
+    persistWebSettingsCache();
+
+    const embedToggle = document.getElementById('setting-embed-download');
+    if (embedToggle) {
+        embedToggle.checked = webSettings.embedDownload;
+    }
+
+    const localToggle = document.getElementById('setting-download-to-local');
+    if (localToggle) {
+        localToggle.checked = webSettings.downloadToLocal;
+    }
+
+    const dirInput = document.getElementById('setting-download-dir');
+    if (dirInput) {
+        dirInput.value = webSettings.downloadDir;
+    }
+
+    refreshDownloadLinks();
+}
+
+async function fetchWebSettings() {
+    try {
+        const response = await fetch(API_ROOT + '/settings');
+        if (!response.ok) return;
+        const data = await response.json();
+        applyWebSettings(data);
+    } catch (_) {
+    }
+}
+
+function buildDownloadRequestURL(id, source, name, artist, cover, extra, options = {}) {
     const params = new URLSearchParams({
         id: String(id || ''),
         source: String(source || ''),
@@ -43,25 +99,87 @@ function buildDownloadURL(id, source, name, artist, cover, extra) {
     if (extraValue !== '' && extraValue !== '{}' && extraValue !== 'null') {
         params.set('extra', extraValue);
     }
-    if (webSettings.embedDownload) {
+    if (options.embed) {
         params.set('embed', '1');
+    }
+    if (options.saveLocal) {
+        params.set('save_local', '1');
     }
 
     return `${API_ROOT}/download?${params.toString()}`;
 }
 
-function refreshDownloadLinks() {
-    document.querySelectorAll('.song-card').forEach(card => {
-        const dl = card.querySelector('.btn-download');
-        if (!dl) return;
-
-        const ds = card.dataset;
-        dl.href = buildDownloadURL(ds.id, ds.source, ds.name, ds.artist, ds.cover || '', ds.extra || '');
+function buildStreamURL(id, source, name, artist, cover, extra) {
+    return buildDownloadRequestURL(id, source, name, artist, cover, extra, {
+        embed: webSettings.embedDownload
     });
 }
 
+function buildDownloadURL(id, source, name, artist, cover, extra) {
+    return buildDownloadRequestURL(id, source, name, artist, cover, extra, {
+        embed: webSettings.embedDownload,
+        saveLocal: webSettings.downloadToLocal
+    });
+}
+
+function updateDownloadButton(link) {
+    if (!link) return;
+
+    const card = link.closest('.song-card');
+    if (!card) return;
+
+    const ds = card.dataset;
+    link.href = buildDownloadURL(ds.id, ds.source, ds.name, ds.artist, ds.cover || '', ds.extra || '');
+    link.title = webSettings.downloadToLocal ? '保存到本地目录' : '下载歌曲';
+}
+
+function refreshDownloadLinks() {
+    document.querySelectorAll('.song-card').forEach(card => {
+        updateDownloadButton(card.querySelector('.btn-download'));
+    });
+}
+
+async function requestLocalDownload(url) {
+    const response = await fetch(url, {
+        headers: {
+            'Accept': 'application/json'
+        }
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data || data.error) {
+        throw new Error((data && data.error) || '保存失败');
+    }
+    return data;
+}
+
+async function handleDownloadClick(link) {
+    if (!webSettings.downloadToLocal || !link) {
+        return false;
+    }
+
+    link.style.pointerEvents = 'none';
+    link.style.opacity = '0.6';
+    try {
+        const data = await requestLocalDownload(link.href);
+        let message = `已保存到:\n${data.path || webSettings.downloadDir}`;
+        if (data.warning) {
+            message += `\n\n提示: ${data.warning}`;
+        }
+        alert(message);
+    } catch (error) {
+        alert(error.message || '保存失败');
+    } finally {
+        link.style.pointerEvents = '';
+        link.style.opacity = '';
+    }
+
+    return true;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    loadWebSettings();
+    loadWebSettingsFromCache();
+    applyWebSettings(webSettings);
+    fetchWebSettings();
 
     const checkboxes = document.querySelectorAll('.source-checkbox');
     
@@ -112,12 +230,13 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     });
 
-    const embedToggle = document.getElementById('setting-embed-download');
-    if (embedToggle) {
-        embedToggle.checked = webSettings.embedDownload;
-    }
-
-    refreshDownloadLinks();
+    document.addEventListener('click', async function(event) {
+        const link = event.target.closest('.btn-download');
+        if (!link) return;
+        if (!webSettings.downloadToLocal) return;
+        event.preventDefault();
+        await handleDownloadClick(link);
+    });
 
     syncAllPlayButtons();
 });
@@ -208,34 +327,49 @@ function queueInspectSong(card, delay = INSPECT_REQUEST_DELAY_MS) {
 
 function openCookieModal() {
     document.getElementById('cookieModal').style.display = 'flex';
-    const embedToggle = document.getElementById('setting-embed-download');
-    if (embedToggle) {
-        embedToggle.checked = webSettings.embedDownload;
-    }
-    fetch(API_ROOT + '/cookies').then(r => r.json()).then(data => {
-        for (const [k, v] of Object.entries(data)) {
+    Promise.all([
+        fetch(API_ROOT + '/cookies').then(r => r.json()),
+        fetch(API_ROOT + '/settings').then(r => r.json())
+    ]).then(([cookies, settings]) => {
+        applyWebSettings(settings);
+        for (const [k, v] of Object.entries(cookies || {})) {
             const el = document.getElementById(`cookie-${k}`);
-            if(el) el.value = v;
+            if (el) el.value = v;
         }
+    }).catch(() => {
+        applyWebSettings(webSettings);
     });
 }
 
 function saveCookies() {
-    const embedToggle = document.getElementById('setting-embed-download');
-    webSettings.embedDownload = !!(embedToggle && embedToggle.checked);
-    saveWebSettings();
-    refreshDownloadLinks();
+    const nextSettings = normalizeWebSettings({
+        embedDownload: !!document.getElementById('setting-embed-download')?.checked,
+        downloadToLocal: !!document.getElementById('setting-download-to-local')?.checked,
+        downloadDir: document.getElementById('setting-download-dir')?.value || ''
+    });
 
     const data = {};
     document.querySelectorAll('input[id^="cookie-"]').forEach(input => {
         data[input.id.replace('cookie-', '')] = input.value;
     });
-    fetch(API_ROOT + '/cookies', {
-        method: 'POST', 
-        body: JSON.stringify(data)
-    }).then(() => {
-        alert('保存成功！');
+
+    Promise.all([
+        fetch(API_ROOT + '/cookies', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }),
+        fetch(API_ROOT + '/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(nextSettings)
+        }).then(r => r.ok ? r.json() : Promise.reject())
+    ]).then(([, savedSettings]) => {
+        applyWebSettings(savedSettings || nextSettings);
+        alert('保存成功');
         document.getElementById('cookieModal').style.display = 'none';
+    }).catch(() => {
+        alert('保存失败，请稍后重试');
     });
 }
 
@@ -458,6 +592,7 @@ function updateCardWithSong(card, song) {
     if (dl) {
         dl.href = buildDownloadURL(song.id, song.source, song.name, song.artist, song.cover || '', card.dataset.extra || '');
         dl.id = `dl-${song.id}`;
+        dl.title = webSettings.downloadToLocal ? '保存到本地目录' : '下载歌曲';
     }
 
     const lrc = card.querySelector('.btn-lyric');
@@ -502,7 +637,7 @@ function syncSongToAPlayer(oldId, newSong) {
         audio.name = newSong.name;
         audio.artist = newSong.artist;
         audio.cover = newSong.cover;
-        audio.url = buildDownloadURL(newSong.id, newSong.source, newSong.name, newSong.artist, newSong.cover || '', newSong.extra ? JSON.stringify(newSong.extra) : '');
+        audio.url = buildStreamURL(newSong.id, newSong.source, newSong.name, newSong.artist, newSong.cover || '', newSong.extra ? JSON.stringify(newSong.extra) : '');
         audio.lrc = `${API_ROOT}/lyric?id=${encodeURIComponent(newSong.id)}&source=${newSong.source}`;
         audio.custom_id = newSong.id; 
         audio.source = newSong.source; 
@@ -576,7 +711,7 @@ function playAllAndJumpTo(btn) {
         playlist.push({
             name: ds.name,
             artist: ds.artist,
-            url: buildDownloadURL(ds.id, ds.source, ds.name, ds.artist, ds.cover || '', ds.extra || ''),
+            url: buildStreamURL(ds.id, ds.source, ds.name, ds.artist, ds.cover || '', ds.extra || ''),
             cover: coverUrl,
             lrc: `${API_ROOT}/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
             theme: '#10b981',
@@ -704,7 +839,7 @@ function getSelectedSongs() {
                 source: ds.source,
                 name: ds.name,
                 artist: ds.artist,
-                url: buildDownloadURL(ds.id, ds.source, ds.name, ds.artist, ds.cover || ''),
+                url: buildDownloadURL(ds.id, ds.source, ds.name, ds.artist, ds.cover || '', ds.extra || ''),
                 cover: coverUrl,
                 lrc: `${API_ROOT}/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
                 theme: '#10b981',
@@ -715,9 +850,38 @@ function getSelectedSongs() {
     return songs;
 }
 
-function batchDownload() {
+async function batchDownload() {
     const songs = getSelectedSongs();
     if (songs.length === 0) return;
+    if (webSettings.downloadToLocal) {
+        if (!confirm(`鍑嗗灏?${songs.length} 棣栨瓕鏇蹭繚瀛樺埌鏈湴鐩綍锛?${webSettings.downloadDir}`)) {
+            return;
+        }
+
+        let success = 0;
+        let warningCount = 0;
+        for (const song of songs) {
+            try {
+                const data = await requestLocalDownload(song.url);
+                success++;
+                if (data.warning) {
+                    warningCount++;
+                }
+            } catch (_) {
+            }
+        }
+
+        if (success === songs.length) {
+            let message = `宸蹭繚瀛? ${success} 棣栨瓕鏇插埌:\n${webSettings.downloadDir}`;
+            if (warningCount > 0) {
+                message += `\n\n鍏? ${warningCount} 棣栬Е鍙戜簡闄嶇骇鎻愮ず锛岃鏌ョ湅缁堢鏃ュ織`;
+            }
+            alert(message);
+        } else {
+            alert(`鏈湴淇濆瓨瀹屾垚锛屾垚鍔? ${success}/${songs.length}`);
+        }
+        return;
+    }
 
     if (!confirm(`准备下载 ${songs.length} 首歌曲。\n注意：浏览器可能会拦截多个弹窗，请务必允许本站点的弹窗！`)) {
         return;

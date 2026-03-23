@@ -140,11 +140,29 @@ func Start(port string, shouldOpenBrowser bool, flags FeatureFlags) {
 	api.GET("/cookies", func(c *gin.Context) { c.JSON(200, core.CM.GetAll()) })
 	api.POST("/cookies", func(c *gin.Context) {
 		var req map[string]string
-		if c.ShouldBindJSON(&req) == nil {
+		if err := c.ShouldBindJSON(&req); err == nil {
 			core.CM.SetAll(req)
 			core.CM.Save()
 			c.JSON(200, gin.H{"status": "ok"})
+			return
 		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid cookies payload"})
+	})
+
+	api.GET("/settings", func(c *gin.Context) {
+		c.JSON(200, core.GetWebSettings())
+	})
+	api.POST("/settings", func(c *gin.Context) {
+		var req core.WebSettings
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid settings payload"})
+			return
+		}
+		if err := core.SaveWebSettings(req); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, core.GetWebSettings())
 	})
 
 	RegisterMusicRoutes(api)

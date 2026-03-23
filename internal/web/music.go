@@ -3,7 +3,6 @@ package web
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -377,7 +376,10 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		name := c.Query("name")
 		artist := c.Query("artist")
 		coverURL := strings.TrimSpace(c.Query("cover"))
-		embedMeta := c.Query("embed") == "1" && strings.TrimSpace(c.GetHeader("Range")) == ""
+		noRangeRequest := strings.TrimSpace(c.GetHeader("Range")) == ""
+		embedMeta := c.Query("embed") == "1" && noRangeRequest
+		saveLocal := c.Query("save_local") == "1" && noRangeRequest
+		settings := core.GetWebSettings()
 		extra := parseSongExtraQuery(c.Query("extra"))
 
 		if id == "" || source == "" {
@@ -394,75 +396,38 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		tempSong := &model.Song{ID: id, Source: source, Name: name, Artist: artist, Cover: coverURL, Extra: extra}
 		baseFilename := fmt.Sprintf("%s - %s", name, artist)
 
+		if saveLocal {
+			result, err := core.SaveSongToFile(tempSong, settings.DownloadDir, embedMeta, embedMeta)
+			if err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+				return
+			}
+
+			payload := gin.H{
+				"status":   "ok",
+				"saved":    true,
+				"path":     result.SavedPath,
+				"filename": result.Filename,
+			}
+			if result.Warning != "" {
+				payload["warning"] = result.Warning
+			}
+			c.JSON(200, payload)
+			return
+		}
+
 		if embedMeta {
-			var audioData []byte
-			if source == "soda" {
-				cookie := core.CM.Get("soda")
-				sodaInst := soda.New(cookie)
-				info, err := sodaInst.GetDownloadInfo(tempSong)
-				if err != nil {
-					c.String(502, "Soda info error")
-					return
-				}
-				encryptedData, _, err := core.FetchBytesWithMime(info.URL, "soda")
-				if err != nil {
-					c.String(502, "Soda stream error")
-					return
-				}
-				audioData, err = soda.DecryptAudio(encryptedData, info.PlayAuth)
-				if err != nil {
-					c.String(500, "Decrypt failed")
-					return
-				}
-			} else {
-				dlFunc := core.GetDownloadFunc(source)
-				if dlFunc == nil {
-					c.String(400, "Unknown source")
-					return
-				}
-
-				downloadURL, err := dlFunc(tempSong)
-				if err != nil {
-					c.String(404, "Failed to get URL")
-					return
-				}
-
-				audioData, _, err = core.FetchBytesWithMime(downloadURL, source)
-				if err != nil {
-					c.String(502, "Upstream stream error")
-					return
-				}
+			result, err := core.DownloadSongData(tempSong, true, true)
+			if err != nil {
+				c.String(502, "Upstream stream error")
+				return
+			}
+			if result.Warning != "" {
+				c.Header("X-MusicDL-Warning", result.Warning)
 			}
 
-			var lyric string
-			if lyricFn := core.GetLyricFunc(source); lyricFn != nil {
-				lyric, _ = lyricFn(&model.Song{ID: id, Source: source})
-			}
-
-			var coverData []byte
-			var coverMime string
-			if coverURL != "" {
-				coverData, coverMime, _ = core.FetchBytesWithMime(coverURL, source)
-			}
-
-			ext := core.DetectAudioExt(audioData)
-			filename := fmt.Sprintf("%s.%s", baseFilename, ext)
-			contentType := core.AudioMimeByExt(ext)
-
-			finalData := audioData
-			if (ext == "mp3" || ext == "flac" || ext == "m4a" || ext == "wma") && (lyric != "" || len(coverData) > 0) {
-				embeddedData, embedErr := core.EmbedSongMetadata(audioData, tempSong, lyric, coverData, coverMime)
-				if embedErr == nil {
-					finalData = embeddedData
-				} else if errors.Is(embedErr, core.ErrFFmpegNotFound) {
-					c.Header("X-MusicDL-Warning", "ffmpeg not found, metadata embedding skipped")
-				} else {
-					c.Header("X-MusicDL-Warning", "metadata embedding failed, using original audio")
-				}
-			}
-
-			setDownloadHeader(c, filename)
-			c.Data(200, contentType, finalData)
+			setDownloadHeader(c, result.Filename)
+			c.Data(200, result.ContentType, result.Data)
 			return
 		}
 

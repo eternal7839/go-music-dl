@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -39,8 +38,7 @@ import (
 
 // --- 常量与样式 ---
 const (
-	CookieFile = "data/cookies.json"
-	UA_Common  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+	UA_Common = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
 )
 
 var (
@@ -75,25 +73,20 @@ var (
 
 // --- Cookie 管理 ---
 type CookieManager struct {
-	mu      sync.RWMutex
-	cookies map[string]string
 }
 
-var cm = &CookieManager{cookies: make(map[string]string)}
+var cm = &CookieManager{}
 
 func (m *CookieManager) Load() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	data, err := os.ReadFile(CookieFile)
-	if err == nil {
-		json.Unmarshal(data, &m.cookies)
-	}
+	core.CM.Load()
 }
 
 func (m *CookieManager) Get(source string) string {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.cookies[source]
+	return core.CM.Get(source)
+}
+
+func (m *CookieManager) GetAll() map[string]string {
+	return core.CM.GetAll()
 }
 
 // --- 工厂函数 ---
@@ -1047,6 +1040,15 @@ func switchSourceCmd(index int, song model.Song) tea.Cmd {
 
 // 内部下载实现（支持 ID3 元数据内嵌）
 func downloadSongWithCookie(song *model.Song, outDir string, withCover bool, withLyrics bool) error {
+	result, err := core.SaveSongToFile(song, outDir, withCover, withLyrics)
+	if err != nil {
+		return err
+	}
+	if result.Warning != "" {
+		fmt.Printf("Warning: %s\n", result.Warning)
+	}
+	return nil
+
 	// 1. 准备目录
 	if err := os.MkdirAll(outDir, 0755); err != nil {
 		return err
@@ -1450,17 +1452,15 @@ func (m modelState) View() string {
 		s.WriteString(fmt.Sprintf("\n\n(当前源: %v)", getSourceDisplay(m.sources)))
 		s.WriteString(fmt.Sprintf("\n(当前模式: %s搜索)", modeLabel))
 		s.WriteString("\n(按 Enter 搜索/解析, Tab 切换搜歌/歌单, w 每日推荐, Ctrl+C 退出)")
-		cm.mu.RLock()
-		if len(cm.cookies) > 0 {
+		cookies := cm.GetAll()
+		if len(cookies) > 0 {
 			var loadedSources []string
-			for k := range cm.cookies {
+			for k := range cookies {
 				loadedSources = append(loadedSources, k)
 			}
 			cookieHint := fmt.Sprintf("\n(已加载 Cookie: %s)", strings.Join(loadedSources, ", "))
 			s.WriteString(lipgloss.NewStyle().Foreground(greenColor).Render(cookieHint))
 		}
-		cm.mu.RUnlock()
-
 		if m.err != nil {
 			s.WriteString(lipgloss.NewStyle().Foreground(redColor).Render(fmt.Sprintf("\n\n❌ %v", m.err)))
 		}
