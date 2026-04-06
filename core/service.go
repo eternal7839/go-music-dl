@@ -756,7 +756,7 @@ func GetSourceDescription(source string) string {
 		"jamendo":  "Jamendo (CC)",
 		"joox":     "JOOX",
 		"qianqian": "千千音乐",
-		"soda":     "Soda音乐",
+		"soda":     "汽水音乐",
 		"bilibili": "Bilibili",
 	}
 	if desc, exists := descriptions[source]; exists {
