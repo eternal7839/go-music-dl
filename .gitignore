@@ -15,3 +15,4 @@ data/video_output/
 data/settings.db
 data/
 *.exe
+*.log

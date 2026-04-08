@@ -345,7 +345,7 @@ function bindSongCardCovers(root = document) {
         if (!coverWrap) return;
 
         coverWrap.style.cursor = 'pointer';
-        coverWrap.title = '鐐瑰嚮鐢熸垚瑙嗛';
+        coverWrap.title = '点击生成视频';
         coverWrap.onclick = (e) => {
             e.stopPropagation();
             if (window.VideoGen) {
@@ -362,7 +362,7 @@ function bindSongCardCovers(root = document) {
                 });
             } else {
                 console.error("VideoGen library not loaded.");
-                alert("瑙嗛鐢熸垚缁勪欢鍔犺浇澶辫触锛岃鍒锋柊椤甸潰閲嶈瘯");
+                alert("视频生成组件加载失败，请刷新页面重试");
             }
         };
     });
