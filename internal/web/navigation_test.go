@@ -91,6 +91,12 @@ func TestAppJSIncludesAjaxNavigationEntryPoints(t *testing.T) {
 	if !strings.Contains(js, "initializePageContent(document);") {
 		t.Fatal("app.js missing initializePageContent bootstrap")
 	}
+	if !strings.Contains(js, "function refreshDownloadLinks(root = document)") {
+		t.Fatal("app.js missing scoped refreshDownloadLinks helper")
+	}
+	if !strings.Contains(js, "refreshDownloadLinks(root);") {
+		t.Fatal("app.js missing download link refresh during page initialization")
+	}
 }
 
 func TestPaginationTemplatesExposeShortcutMetadata(t *testing.T) {

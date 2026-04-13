@@ -209,8 +209,8 @@ function updateDownloadButton(link) {
     link.title = webSettings.downloadToLocal ? '保存到本地目录' : '下载歌曲';
 }
 
-function refreshDownloadLinks() {
-    document.querySelectorAll('.song-card').forEach(card => {
+function refreshDownloadLinks(root = document) {
+    root.querySelectorAll('.song-card').forEach(card => {
         updateDownloadButton(card.querySelector('.btn-download'));
     });
 }
@@ -433,6 +433,7 @@ function initializePageContent(root = document) {
         toggleSearchType(initialTypeEl.value);
     }
 
+    refreshDownloadLinks(root);
     bindSongCardCovers(root);
     updateBatchToolbar();
     highlightCard(currentPlayingId);
