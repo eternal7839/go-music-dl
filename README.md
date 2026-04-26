@@ -16,6 +16,8 @@ Go Music DL 是一个音乐搜索与下载工具，支持 **Web 界面**、**TUI
 2. 解压，双击运行
 3. 享受原生桌面体验！
 
+移动端下载说明：在 [Releases](https://github.com/guohuiyuan/go-music-dl/releases) 页面可直接下载 Android `music-dl.apk` 与 iOS `music-dl-ios-unsigned.ipa`。
+
 ### Web 模式
 
 ```bash
@@ -259,6 +261,8 @@ adb install -r music-dl.apk
 * 执行 `package_app.bat`
 * 上传 `music-dl.apk` 到 Actions Artifacts 和 GitHub Release
 
+发布后可在 [Releases](https://github.com/guohuiyuan/go-music-dl/releases) 下载 `music-dl.apk`。
+
 #### 3. Java 17 与 Build-Tools 版本说明（重点）
 
 高版本（`34.0.0` 及以上）的 Android Build-Tools 已修复旧版 `d8.bat` 脚本兼容性问题，可正常配合 Java 17 使用。
@@ -309,6 +313,8 @@ chmod +x package_ios.sh
 
 * `music-dl.app`：iOS 应用包目录
 * `music-dl-ios-unsigned.ipa`：未签名安装包，通常用于后续签名与分发流程
+
+发布后可在 [Releases](https://github.com/guohuiyuan/go-music-dl/releases) 下载 `music-dl-ios-unsigned.ipa`。
 
 > 注意：脚本会修改 Xcode 工具链目录（需要管理员权限），建议在受控开发环境中执行。
 
