@@ -1,15 +1,6 @@
 @echo off
 setlocal EnableExtensions
 
-set "JAVA8_HOME="
-for /f "delims=" %%d in ('dir /b /ad "C:\Program Files\Eclipse Adoptium\jdk-8*" 2^>nul') do if not defined JAVA8_HOME set "JAVA8_HOME=C:\Program Files\Eclipse Adoptium\%%d"
-if not defined JAVA8_HOME for /f "delims=" %%d in ('dir /b /ad "C:\Program Files\Java\jdk1.8*" 2^>nul') do set "JAVA8_HOME=C:\Program Files\Java\%%d"
-if not defined JAVA8_HOME for /f "delims=" %%d in ('dir /b /ad "C:\Program Files\BellSoft\*8*" 2^>nul') do set "JAVA8_HOME=C:\Program Files\BellSoft\%%d"
-if defined JAVA8_HOME (
-	set "JAVA_HOME=%JAVA8_HOME%"
-	set "PATH=%JAVA_HOME%\bin;%PATH%"
-)
-
 if "%ANDROID_HOME%"=="" set "ANDROID_HOME=C:\Android"
 set "ANDROID_SDK_ROOT=%ANDROID_HOME%"
 
@@ -67,13 +58,8 @@ if not defined JAVA_VERSION (
 	echo ERROR: failed to detect java version using "%JAVA_EXE%".
 	exit /b 1
 )
+
 echo Using Java version %JAVA_VERSION%
-echo %JAVA_VERSION% | findstr /b /c:"1.8." >nul
-if errorlevel 1 (
-	echo ERROR: gogio requires JDK 8. Current java version is %JAVA_VERSION%.
-	echo Please install JDK 8 and make sure it can be auto-detected by this script.
-	exit /b 1
-)
 
 echo JAVA_HOME = %JAVA_HOME%
 echo ANDROID_HOME = %ANDROID_HOME%
