@@ -280,6 +280,38 @@ cd go-music-dl
 package_app.bat
 ```
 
+### iOS App 构建
+
+项目已提供 iOS 打包脚本：`package_ios.sh`。
+
+#### 1. 构建环境
+
+* macOS（需安装 Xcode Command Line Tools）
+* Go 已安装并可用
+* 可使用 `sudo`（脚本会在必要时补齐 Xcode 工具链中的 `libarclite` 文件）
+
+#### 2. 执行构建
+
+```bash
+cd go-music-dl
+chmod +x package_ios.sh
+./package_ios.sh
+```
+
+脚本会自动：
+
+* 检查并补齐 `libarclite_iphonesimulator.a` / `libarclite_iphoneos.a`
+* 安装 `gogio`
+* 构建 iOS App（输出 `music-dl.app`）
+* 打包为未签名 IPA（输出 `music-dl-ios-unsigned.ipa`）
+
+#### 3. 产物说明
+
+* `music-dl.app`：iOS 应用包目录
+* `music-dl-ios-unsigned.ipa`：未签名安装包，通常用于后续签名与分发流程
+
+> 注意：脚本会修改 Xcode 工具链目录（需要管理员权限），建议在受控开发环境中执行。
+
 **如果你 Fork 了本仓库并希望使用自己的构建流：**
 
 1. 在你的仓库 **Settings** -> **Secrets and variables** -> **Actions** 中添加：
