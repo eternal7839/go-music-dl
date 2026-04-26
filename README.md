@@ -224,7 +224,7 @@ TUI 常用按键：
 前置条件：
 
 * Go 已安装并可用（建议 1.25+）
-* JDK 8（脚本会优先自动探测）
+* JDK（推荐 17）
 * Android SDK 已安装，默认路径 `C:\Android`
 * 可用的 NDK（脚本会自动尝试安装 `27.0.12077973`）
 
@@ -238,7 +238,7 @@ package_app.bat
 
 脚本会自动：
 
-* 检测并切换到 JDK 8
+* 读取当前 Java 环境（`JAVA_HOME` / `java`）
 * 检测/安装 Android NDK
 * 安装 `gogio`
 * 构建 `music-dl.apk`
@@ -254,10 +254,31 @@ adb install -r music-dl.apk
 
 `.github/workflows/release.yml` 中新增了 `build-android-apk` 任务。发布时会在 `windows-latest` 环境中：
 
-* 安装 Go、JDK 8、Android SDK
-* 安装 `platform-tools`、`platforms;android-34`、`build-tools;34.0.0`、`ndk;27.0.12077973`
+* 安装 Go、JDK 17、Android SDK
+* 安装 `platform-tools`、`platforms;android-33`、`build-tools;34.0.0`、`ndk;27.0.12077973`
 * 执行 `package_app.bat`
 * 上传 `music-dl.apk` 到 Actions Artifacts 和 GitHub Release
+
+#### 3. Java 17 与 Build-Tools 版本说明（重点）
+
+高版本（`34.0.0` 及以上）的 Android Build-Tools 已修复旧版 `d8.bat` 脚本兼容性问题，可正常配合 Java 17 使用。
+
+如果本地仍有 `33.0.0`，建议升级并清理旧版本：
+
+```cmd
+"C:\Android\cmdline-tools\latest\bin\sdkmanager.bat" "build-tools;34.0.0"
+```
+
+如果你使用 Android Studio，也可以在 SDK Manager -> SDK Tools 中勾选 Show Package Details，然后安装 `34.0.0` 及以上版本。
+
+非常关键：请到 `C:\Android\build-tools\` 目录下，删除或重命名 `33.0.0` 旧目录，避免 `gogio` 优先命中旧版 `d8`。
+
+完成后再次执行：
+
+```bat
+cd go-music-dl
+package_app.bat
+```
 
 **如果你 Fork 了本仓库并希望使用自己的构建流：**
 

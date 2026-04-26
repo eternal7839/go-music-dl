@@ -460,7 +460,7 @@ jobs:
             exit /b 1
           )
           call "%SDKMANAGER%" --licenses < NUL
-          call "%SDKMANAGER%" "platform-tools" "platforms;android-33" "build-tools;33.0.2" "ndk;27.0.12077973"
+          call "%SDKMANAGER%" "platform-tools" "platforms;android-33" "build-tools;34.0.0" "ndk;27.0.12077973"
 
       - name: Build APK
         shell: cmd
