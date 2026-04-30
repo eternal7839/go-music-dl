@@ -231,42 +231,52 @@
     white-space: pre;
     vertical-align: top;
     transition: transform 0.12s ease, filter 0.12s ease;
+    margin-right: 5px; /* 控制字间距 */
 }
 
+/* 核心魔法：用 padding 撑大物理边界保护阴影，用负 margin 拉回位置不破坏排版 */
 .vg-word-base,
 .vg-word-fill {
     display: block;
     white-space: pre;
+    padding: 6px;  /* 留出足够空间放置阴影，防止首字和边缘被切断 */
+    margin: -6px;  /* 往回缩，确保文字本身位置不动 */
 }
 
+/* 播放前：白字绿底圆润边（16向实体阴影，彻底消灭尖刺） */
 .vg-word-base {
-    color: #ffffff; /* 纯白字 */
-    /* 采用多角度实体阴影模拟完美外描边，不污染字内部 */
-    text-shadow: 
-        -1.5px -1.5px 0 #10b981, 
-         1.5px -1.5px 0 #10b981, 
-        -1.5px  1.5px 0 #10b981, 
-         1.5px  1.5px 0 #10b981,
-         0px -1.5px 0 #10b981,
-         0px  1.5px 0 #10b981,
-        -1.5px  0px 0 #10b981,
-         1.5px  0px 0 #10b981;
+    color: #ffffff;
+    -webkit-text-stroke: 0;
+    text-shadow:
+        -2px -2px 0 #10b981,  0px -2px 0 #10b981,  2px -2px 0 #10b981,
+         2px  0px 0 #10b981,  2px  2px 0 #10b981,  0px  2px 0 #10b981,
+        -2px  2px 0 #10b981, -2px  0px 0 #10b981,
+        -1px -1px 0 #10b981,  1px -1px 0 #10b981,
+        -1px  1px 0 #10b981,  1px  1px 0 #10b981,
+         0px  3px 0 #10b981,  0px -3px 0 #10b981,
+         3px  0px 0 #10b981, -3px  0px 0 #10b981;
 }
 
+/* 播放后：绿字白底圆润边 */
 .vg-word-fill {
     position: absolute;
-    inset: 0 auto 0 0;
-    width: var(--karaoke-progress);
-    overflow: hidden;
-    color: #10b981; /* 绿底 */
-    /* 采用多角度实体阴影模拟白边 */
-    text-shadow: 
-        -1.5px -1.5px 0 #ffffff,  1.5px -1.5px 0 #ffffff, 
-        -1.5px  1.5px 0 #ffffff,  1.5px  1.5px 0 #ffffff,
-         0px -1.5px 0 #ffffff,  0px  1.5px 0 #ffffff,
-        -1.5px  0px 0 #ffffff,  1.5px  0px 0 #ffffff;
-    transition: width 72ms linear;
-    will-change: width;
+    top: 0; left: 0; width: 100%;
+    color: #10b981;
+    -webkit-text-stroke: 0;
+    text-shadow:
+        -2px -2px 0 #ffffff,  0px -2px 0 #ffffff,  2px -2px 0 #ffffff,
+         2px  0px 0 #ffffff,  2px  2px 0 #ffffff,  0px  2px 0 #ffffff,
+        -2px  2px 0 #ffffff, -2px  0px 0 #ffffff,
+        -1px -1px 0 #ffffff,  1px -1px 0 #ffffff,
+        -1px  1px 0 #ffffff,  1px  1px 0 #ffffff,
+         0px  3px 0 #ffffff,  0px -3px 0 #ffffff,
+         3px  0px 0 #ffffff, -3px  0px 0 #ffffff;
+    z-index: 2;
+    /* 采用 GPU 硬件加速的裁剪遮罩，完美切口 */
+    -webkit-clip-path: inset(0 calc(100% - var(--karaoke-progress)) 0 0);
+    clip-path: inset(0 calc(100% - var(--karaoke-progress)) 0 0);
+    transition: clip-path 72ms linear, -webkit-clip-path 72ms linear;
+    will-change: clip-path;
 }
 
 .vg-word.is-active {

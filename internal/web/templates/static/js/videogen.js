@@ -13,9 +13,9 @@
             const q = this.fft(even), r = this.fft(odd), output = new Float32Array(n); 
             for (let k = 0; k < half; k++) { const t = r[k]; output[k] = q[k] + t; output[k + half] = q[k] - t; }
             return output;
-        },
-        getFrequencyData: function(pcmData, fftSize, smoothing) {
-            const half = fftSize / 2;
+            ctx.lineJoin = "round";
+            // 加粗描边，实现图1的厚实感
+            ctx.lineWidth = Math.max(3, lineHeight * 0.12);
             if (!this.windowed || this.windowed.length !== fftSize) {
                 this.windowed = new Float32Array(fftSize);
                 this.mags = new Uint8Array(half);
@@ -293,41 +293,64 @@
                 };
 
                 const drawKaraokeWordLine = (words, x, y, lineHeight, nowMs, baseColor, fillColor, alpha) => {
+                    ctx.lineJoin = "round"; // 确保边缘绝对圆润无尖刺
+                    ctx.lineWidth = Math.max(3, lineHeight * 0.12); // 稍微加粗，还原图1厚实感
+                    ctx.globalAlpha = alpha;
+                    const strokeSpill = ctx.lineWidth; // 计算边框向外溢出的安全区距离
+
                     let cursorX = x;
                     
-                    // 设置全局经典的绿色边框属性
+                    // 第1层：先画一整句的【底层绿边】
                     ctx.strokeStyle = "#10b981";
-                    ctx.lineJoin = "round";
-                    ctx.lineWidth = Math.max(2, lineHeight * 0.08); // 根据字号自适应边框粗细
+                    words.forEach((word) => {
+                        const text = String(word?.text || '');
+                        if (text) { ctx.strokeText(text, cursorX, y); cursorX += ctx.measureText(text).width; }
+                    });
 
+                    // 第2层：再画一整句的【底层白字】（字压在边上，内部绝对纯净无色块）
+                    cursorX = x;
+                    ctx.fillStyle = "#ffffff";
+                    words.forEach((word) => {
+                        const text = String(word?.text || '');
+                        if (text) { ctx.fillText(text, cursorX, y); cursorX += ctx.measureText(text).width; }
+                    });
+
+                    // 高级裁剪层：精确切出当前的进度光束
+                    ctx.save();
+                    ctx.beginPath();
+                    cursorX = x;
                     words.forEach((word) => {
                         const text = String(word?.text || '');
                         if (!text) return;
                         const width = ctx.measureText(text).width;
-                        ctx.globalAlpha = alpha;
-                        
-                        // 1. 经典卡拉OK 底色：白字 + 绿边
-                        ctx.strokeText(text, cursorX, y);
-                        ctx.fillStyle = "#ffffff";
-                        ctx.fillText(text, cursorX, y);
-                        
                         const progress = lyricProgressWorker(nowMs, Number(word.start || 0), Number(word.end || 0));
+                        
                         if (progress > 0) {
-                            ctx.save();
-                            ctx.beginPath();
-                            ctx.rect(cursorX, y - lineHeight / 2, width * progress, lineHeight);
-                            ctx.clip();
-                            
-                            // 2. 经典卡拉OK 进度填充：绿字 + 白边
-                            ctx.strokeStyle = "#ffffff";
-                            ctx.strokeText(text, cursorX, y);
-                            ctx.fillStyle = "#10b981";
-                            ctx.fillText(text, cursorX, y);
-                            
-                            ctx.restore();
+                            // 核心修复：100%时刻意放宽右侧裁剪区，且向左延伸防止切掉首字描边
+                            const clipRight = progress === 1 ? width + strokeSpill : width * progress;
+                            ctx.rect(cursorX - strokeSpill, y - lineHeight, strokeSpill + clipRight, lineHeight * 2);
                         }
                         cursorX += width;
                     });
+                    ctx.clip();
+
+                    // 第3层：在进度裁剪区内画【高亮白边】
+                    cursorX = x;
+                    ctx.strokeStyle = "#ffffff";
+                    words.forEach((word) => {
+                        const text = String(word?.text || '');
+                        if (text) { ctx.strokeText(text, cursorX, y); cursorX += ctx.measureText(text).width; }
+                    });
+
+                    // 第4层：在进度裁剪区内画【高亮绿字】
+                    cursorX = x;
+                    ctx.fillStyle = "#10b981";
+                    words.forEach((word) => {
+                        const text = String(word?.text || '');
+                        if (text) { ctx.fillText(text, cursorX, y); cursorX += ctx.measureText(text).width; }
+                    });
+
+                    ctx.restore();
                     ctx.globalAlpha = 1;
                 };
 
@@ -1333,7 +1356,8 @@
             const start = Number(word.dataset.start || 0);
             const end = Number(word.dataset.end || start + fallbackLineDuration);
             const progress = lyricProgress(ms, start, end);
-            word.style.setProperty("--karaoke-progress", `${(progress * 100).toFixed(3)}%`);
+            // 核心修复：100% 进度时直接加上安全距离，防止被裁切掉右侧描边
+            word.style.setProperty("--karaoke-progress", progress === 1 ? "calc(100% + 8px)" : `${(progress * 100).toFixed(3)}%`);
             word.classList.toggle("is-active", progress > 0 && progress < 1);
           });
         }

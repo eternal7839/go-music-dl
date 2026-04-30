@@ -1608,7 +1608,8 @@ const KaraokeLyrics = (() => {
             const start = Number(word.dataset.start || 0);
             const end = Number(word.dataset.end || start + fallbackLineDuration);
             const progress = getProgress(ms, start, end);
-            word.style.setProperty('--karaoke-progress', `${(progress * 100).toFixed(3)}%`);
+            // 核心修复：100% 进度时直接加上安全距离，防止强迫症切缝
+            word.style.setProperty('--karaoke-progress', progress === 1 ? 'calc(100% + 8px)' : `${(progress * 100).toFixed(3)}%`);
             word.classList.toggle('is-active', progress > 0 && progress < 1);
         });
     }
