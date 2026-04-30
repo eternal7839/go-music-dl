@@ -240,7 +240,17 @@
 }
 
 .vg-word-base {
-    color: var(--karaoke-base-color, #ffffff);
+    color: #ffffff; /* 纯白字 */
+    /* 采用多角度实体阴影模拟完美外描边，不污染字内部 */
+    text-shadow: 
+        -1.5px -1.5px 0 #10b981, 
+         1.5px -1.5px 0 #10b981, 
+        -1.5px  1.5px 0 #10b981, 
+         1.5px  1.5px 0 #10b981,
+         0px -1.5px 0 #10b981,
+         0px  1.5px 0 #10b981,
+        -1.5px  0px 0 #10b981,
+         1.5px  0px 0 #10b981;
 }
 
 .vg-word-fill {
@@ -248,8 +258,13 @@
     inset: 0 auto 0 0;
     width: var(--karaoke-progress);
     overflow: hidden;
-    color: #10b981;
-    text-shadow: none;
+    color: #10b981; /* 绿底 */
+    /* 采用多角度实体阴影模拟白边 */
+    text-shadow: 
+        -1.5px -1.5px 0 #ffffff,  1.5px -1.5px 0 #ffffff, 
+        -1.5px  1.5px 0 #ffffff,  1.5px  1.5px 0 #ffffff,
+         0px -1.5px 0 #ffffff,  0px  1.5px 0 #ffffff,
+        -1.5px  0px 0 #ffffff,  1.5px  0px 0 #ffffff;
     transition: width 72ms linear;
     will-change: width;
 }

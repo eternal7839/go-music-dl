@@ -294,21 +294,36 @@
 
                 const drawKaraokeWordLine = (words, x, y, lineHeight, nowMs, baseColor, fillColor, alpha) => {
                     let cursorX = x;
+                    
+                    // 设置全局经典的绿色边框属性
+                    ctx.strokeStyle = "#10b981";
+                    ctx.lineJoin = "round";
+                    ctx.lineWidth = Math.max(2, lineHeight * 0.08); // 根据字号自适应边框粗细
+
                     words.forEach((word) => {
                         const text = String(word?.text || '');
                         if (!text) return;
                         const width = ctx.measureText(text).width;
                         ctx.globalAlpha = alpha;
-                        ctx.fillStyle = baseColor;
+                        
+                        // 1. 经典卡拉OK 底色：白字 + 绿边
+                        ctx.strokeText(text, cursorX, y);
+                        ctx.fillStyle = "#ffffff";
                         ctx.fillText(text, cursorX, y);
+                        
                         const progress = lyricProgressWorker(nowMs, Number(word.start || 0), Number(word.end || 0));
                         if (progress > 0) {
                             ctx.save();
                             ctx.beginPath();
                             ctx.rect(cursorX, y - lineHeight / 2, width * progress, lineHeight);
                             ctx.clip();
-                            ctx.fillStyle = fillColor;
+                            
+                            // 2. 经典卡拉OK 进度填充：绿字 + 白边
+                            ctx.strokeStyle = "#ffffff";
+                            ctx.strokeText(text, cursorX, y);
+                            ctx.fillStyle = "#10b981";
                             ctx.fillText(text, cursorX, y);
+                            
                             ctx.restore();
                         }
                         cursorX += width;
