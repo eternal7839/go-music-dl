@@ -212,15 +212,15 @@
 }
 
 .vg-line-karaoke {
-    color: rgba(209, 250, 229, 0.72);
+    color: rgba(255, 255, 255, 0.72);
 }
 
 .vg-line-karaoke.active {
-    color: rgba(209, 250, 229, 0.9);
+    color: rgba(255, 255, 255, 1);
 }
 
 .vg-line-orig {
-    --karaoke-base-color: rgba(209, 250, 229, 0.42);
+    --karaoke-base-color: #ffffff;
     font-weight: 800;
 }
 
@@ -240,7 +240,7 @@
 }
 
 .vg-word-base {
-    color: var(--karaoke-base-color, rgba(209, 250, 229, 0.42));
+    color: var(--karaoke-base-color, #ffffff);
 }
 
 .vg-word-fill {
@@ -249,29 +249,29 @@
     width: var(--karaoke-progress);
     overflow: hidden;
     color: #10b981;
-    text-shadow: 0 0 12px rgba(16, 185, 129, 0.45);
+    text-shadow: none;
     transition: width 72ms linear;
     will-change: width;
 }
 
 .vg-word.is-active {
     transform: translateY(-1px);
-    filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.28));
+    filter: none;
 }
 
 .vg-line-trans {
-    --karaoke-base-color: rgba(147,197,253,0.9);
+    --karaoke-base-color: rgba(255, 255, 255, 0.8);
     margin-top: 4px;
-    color: rgba(147,197,253,0.9);
+    color: rgba(255, 255, 255, 0.8);
     font-size: 0.58em;
     line-height: 1.4;
 }
 
 .vg-line-roma {
-    --karaoke-base-color: rgba(196,181,253,0.78);
+    --karaoke-base-color: rgba(255, 255, 255, 0.6);
     order: 1;
     margin-top: 2px;
-    color: rgba(196,181,253,0.78);
+    color: rgba(255, 255, 255, 0.6);
     font-size: 0.46em;
     line-height: 1.35;
 }

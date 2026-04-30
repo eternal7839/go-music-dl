@@ -506,7 +506,7 @@
                             currentY,
                             block.origFont,
                             timeMs,
-                            block.isCurrent ? "rgba(209,250,229,0.42)" : "rgba(209,250,229,0.72)",
+                            block.isCurrent ? "rgba(255,255,255,1)" : "rgba(255,255,255,0.7)",
                             block.alpha,
                             block.isCurrent
                         );
@@ -519,7 +519,7 @@
                                 currentY,
                                 block.romaFont,
                                 timeMs,
-                                block.isCurrent ? "rgba(196,181,253,0.55)" : "rgba(196,181,253,0.9)",
+                                block.isCurrent ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.5)",
                                 block.alpha,
                                 block.isCurrent
                             );
@@ -533,7 +533,7 @@
                                 currentY,
                                 block.transFont,
                                 timeMs,
-                                block.isCurrent ? "rgba(147,197,253,0.55)" : "rgba(147,197,253,0.9)",
+                                block.isCurrent ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.6)",
                                 block.alpha,
                                 block.isCurrent
                             );
