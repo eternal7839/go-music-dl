@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -44,6 +45,9 @@ var localMusicAudioExts = map[string]struct{}{
 	".wav":  {},
 	".wma":  {},
 }
+
+var localMusicCoverExts = []string{".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
+var localMusicLyricExts = []string{".lrc", ".txt", ".lyric"}
 
 type localMusicTrack struct {
 	ID           string            `json:"id"`
@@ -102,17 +106,16 @@ func RegisterLocalMusicRoutes(api *gin.RouterGroup) {
 			return
 		}
 
-		picture, err := readLocalMusicPicture(track.absPath)
-		if err != nil || picture == nil || len(picture.Data) == 0 {
+		data, mimeType, ext, err := readLocalMusicCover(track)
+		if err != nil || len(data) == 0 {
 			c.Status(http.StatusNotFound)
 			return
 		}
-		mimeType := strings.TrimSpace(picture.MIMEType)
-		if mimeType == "" {
-			mimeType = "image/jpeg"
+		if c.Query("download") == "1" {
+			setDownloadHeader(c, localMusicCoverFilename(track, ext))
 		}
 		c.Header("Cache-Control", "public, max-age=21600")
-		c.Data(http.StatusOK, mimeType, picture.Data)
+		c.Data(http.StatusOK, mimeType, data)
 	})
 
 	api.POST("/local_music/upload", func(c *gin.Context) {
@@ -351,14 +354,18 @@ func buildLocalMusicTrack(rootAbs string, audioPath string) (*localMusicTrack, e
 	name := ""
 	artist := ""
 	album := ""
-	hasCover := false
+	hasEmbeddedCover := false
+	hasEmbeddedLyric := false
 
 	if file, err := os.Open(absPath); err == nil {
 		if metadata, readErr := tag.ReadFrom(file); readErr == nil {
 			name = strings.TrimSpace(metadata.Title())
 			artist = strings.TrimSpace(metadata.Artist())
 			album = strings.TrimSpace(metadata.Album())
-			hasCover = metadata.Picture() != nil
+			if picture := metadata.Picture(); picture != nil && len(picture.Data) > 0 {
+				hasEmbeddedCover = true
+			}
+			hasEmbeddedLyric = strings.TrimSpace(metadata.Lyrics()) != ""
 		}
 		_ = file.Close()
 	}
@@ -390,8 +397,22 @@ func buildLocalMusicTrack(rootAbs string, audioPath string) (*localMusicTrack, e
 	}
 
 	cover := ""
-	if hasCover {
+	if hasEmbeddedCover {
 		cover = RoutePrefix + "/local_music/cover?id=" + url.QueryEscape(id)
+		extra["cover"] = "true"
+		extra["cover_source"] = "embedded"
+	} else if _, _, ok := localMusicSidecarFile(absPath, localMusicCoverExts); ok {
+		cover = RoutePrefix + "/local_music/cover?id=" + url.QueryEscape(id)
+		extra["cover"] = "true"
+		extra["cover_source"] = "sidecar"
+	}
+
+	if hasEmbeddedLyric {
+		extra["lyric"] = "true"
+		extra["lyric_source"] = "embedded"
+	} else if _, _, ok := localMusicSidecarFile(absPath, localMusicLyricExts); ok {
+		extra["lyric"] = "true"
+		extra["lyric_source"] = "sidecar"
 	}
 
 	return &localMusicTrack{
@@ -638,6 +659,37 @@ func probeTag(tags map[string]string, key string) string {
 	return ""
 }
 
+func localMusicSidecarFile(audioPath string, exts []string) (string, string, bool) {
+	basePath := strings.TrimSuffix(audioPath, filepath.Ext(audioPath))
+	for _, ext := range exts {
+		candidate := basePath + ext
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, ext, true
+		}
+	}
+
+	dir := filepath.Dir(audioPath)
+	baseName := filepath.Base(basePath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", "", false
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		entryExt := strings.ToLower(filepath.Ext(entry.Name()))
+		if !containsString(exts, entryExt) {
+			continue
+		}
+		entryBase := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		if strings.EqualFold(entryBase, baseName) {
+			return filepath.Join(dir, entry.Name()), entryExt, true
+		}
+	}
+	return "", "", false
+}
+
 func readLocalMusicPicture(audioPath string) (*tag.Picture, error) {
 	file, err := os.Open(audioPath)
 	if err != nil {
@@ -650,6 +702,157 @@ func readLocalMusicPicture(audioPath string) (*tag.Picture, error) {
 		return nil, err
 	}
 	return metadata.Picture(), nil
+}
+
+func readLocalMusicLyrics(audioPath string) (string, error) {
+	file, err := os.Open(audioPath)
+	if err == nil {
+		metadata, readErr := tag.ReadFrom(file)
+		_ = file.Close()
+		if readErr == nil {
+			if lyrics := strings.TrimSpace(metadata.Lyrics()); lyrics != "" {
+				return lyrics, nil
+			}
+		}
+	} else {
+		return "", err
+	}
+
+	sidecarPath, _, ok := localMusicSidecarFile(audioPath, localMusicLyricExts)
+	if !ok {
+		return "", errors.New("local lyric not found")
+	}
+	data, err := os.ReadFile(sidecarPath)
+	if err != nil {
+		return "", err
+	}
+	lyrics := strings.TrimSpace(string(data))
+	if lyrics == "" {
+		return "", errors.New("local lyric is empty")
+	}
+	return lyrics, nil
+}
+
+func readLocalMusicCover(track *localMusicTrack) ([]byte, string, string, error) {
+	if track == nil {
+		return nil, "", "", errors.New("empty local music track")
+	}
+
+	picture, err := readLocalMusicPicture(track.absPath)
+	if err == nil && picture != nil && len(picture.Data) > 0 {
+		mimeType := strings.TrimSpace(picture.MIMEType)
+		if mimeType == "" {
+			mimeType = "image/jpeg"
+		}
+		return picture.Data, mimeType, imageExtByMime(mimeType), nil
+	}
+
+	sidecarPath, ext, ok := localMusicSidecarFile(track.absPath, localMusicCoverExts)
+	if !ok {
+		return nil, "", "", errors.New("local cover not found")
+	}
+	data, err := os.ReadFile(sidecarPath)
+	if err != nil {
+		return nil, "", "", err
+	}
+	mimeType := localImageMimeByExt(ext)
+	return data, mimeType, ext, nil
+}
+
+func localImageMimeByExt(ext string) string {
+	ext = strings.ToLower(ext)
+	switch ext {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".webp":
+		return "image/webp"
+	case ".bmp":
+		return "image/bmp"
+	case ".gif":
+		return "image/gif"
+	default:
+		if mimeType := mime.TypeByExtension(ext); strings.HasPrefix(mimeType, "image/") {
+			return mimeType
+		}
+		return "image/jpeg"
+	}
+}
+
+func imageExtByMime(mimeType string) string {
+	switch strings.ToLower(strings.TrimSpace(mimeType)) {
+	case "image/png":
+		return ".png"
+	case "image/webp":
+		return ".webp"
+	case "image/bmp", "image/x-ms-bmp":
+		return ".bmp"
+	case "image/gif":
+		return ".gif"
+	default:
+		return ".jpg"
+	}
+}
+
+func localMusicCoverFilename(track *localMusicTrack, ext string) string {
+	if strings.TrimSpace(ext) == "" {
+		ext = ".jpg"
+	}
+	name := strings.TrimSpace(track.Name)
+	if name == "" {
+		name = strings.TrimSuffix(track.Filename, filepath.Ext(track.Filename))
+	}
+	artist := strings.TrimSpace(track.Artist)
+	if artist == "" {
+		artist = "Unknown"
+	}
+	return utils.SanitizeFilename(fmt.Sprintf("%s - %s%s", name, artist, ext))
+}
+
+func localMusicLyricFilename(track *localMusicTrack) string {
+	name := strings.TrimSpace(track.Name)
+	if name == "" {
+		name = strings.TrimSuffix(track.Filename, filepath.Ext(track.Filename))
+	}
+	artist := strings.TrimSpace(track.Artist)
+	if artist == "" {
+		artist = "Unknown"
+	}
+	return utils.SanitizeFilename(fmt.Sprintf("%s - %s.lrc", name, artist))
+}
+
+func serveLocalMusicLyric(c *gin.Context, song *model.Song, download bool) {
+	if song == nil {
+		c.String(http.StatusNotFound, "Lyric not found")
+		return
+	}
+	track, err := localMusicTrackByID(song.ID)
+	if err != nil {
+		if download {
+			c.String(http.StatusNotFound, "Lyric not found")
+		} else {
+			c.String(http.StatusOK, "[00:00.00] 纯音乐 / 无歌词")
+		}
+		return
+	}
+
+	lyrics, err := readLocalMusicLyrics(track.absPath)
+	if err != nil || strings.TrimSpace(lyrics) == "" {
+		if download {
+			c.String(http.StatusNotFound, "Lyric not found")
+		} else {
+			c.String(http.StatusOK, "[00:00.00] 纯音乐 / 无歌词")
+		}
+		return
+	}
+
+	lyrics = formatLyricForMode(lyrics, c.DefaultQuery("format", "auto"))
+	c.Header("X-Lyric-Format", classifyLyricFormat(lyrics))
+	if download {
+		setDownloadHeader(c, localMusicLyricFilename(track))
+	}
+	c.String(http.StatusOK, lyrics)
 }
 
 func inspectLocalMusicFile(id string, duration string) (gin.H, error) {

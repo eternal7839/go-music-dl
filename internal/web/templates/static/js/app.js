@@ -2042,9 +2042,13 @@ function updateCardWithSong(card, song, options = {}) {
 
     const coverBtn = card.querySelector('.btn-cover');
     if (coverBtn) {
-        // 璁╂柊鍗＄墖鐨勫皝闈㈡寜閽缁堣兘澶熶娇鐢ㄦ垨浣跨敤鍗犱綅鍥惧搷搴?
-        let targetCoverUrl = song.cover || 'https://via.placeholder.com/600?text=No+Cover';
-        coverBtn.href = `${API_ROOT}/download_cover?url=${encodeURIComponent(targetCoverUrl)}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
+        if (isLocalMusicSourceValue(song.source)) {
+            coverBtn.href = `${API_ROOT}/local_music/cover?id=${encodeURIComponent(song.id)}&download=1&name=${encodeURIComponent(song.name || '')}&artist=${encodeURIComponent(song.artist || '')}`;
+        } else {
+            // 璁╂柊鍗＄墖鐨勫皝闈㈡寜閽缁堣兘澶熶娇鐢ㄦ垨浣跨敤鍗犱綅鍥惧搷搴?
+            let targetCoverUrl = song.cover || 'https://via.placeholder.com/600?text=No+Cover';
+            coverBtn.href = `${API_ROOT}/download_cover?url=${encodeURIComponent(targetCoverUrl)}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`;
+        }
     }
 
     const sizeTag = card.querySelector('[id^="size-"]');
@@ -2399,11 +2403,60 @@ async function deleteLocalMusic(trackId) {
     return payload;
 }
 
+function confirmLocalMusicDeletion(songs) {
+    const items = Array.isArray(songs) ? songs : [];
+    if (items.length === 0) return false;
+
+    const names = items.slice(0, 5).map(formatBatchSongLabel).join('\n');
+    const more = items.length > 5 ? `\n...等 ${items.length} 首` : '';
+    const scope = items.length === 1 ? `《${formatBatchSongLabel(items[0])}》` : `${items.length} 首本地音乐`;
+    if (!confirm(`准备删除 ${scope}。\n删除后文件会从本地下载目录移除，且不可恢复。\n\n${names}${more}`)) {
+        return false;
+    }
+    return confirm(`再次确认：确定永久删除 ${scope} 吗？`);
+}
+
+function stopDeletedLocalMusicPlayback(deletedIds) {
+    if (!currentPlayingId || !deletedIds || !deletedIds.has(currentPlayingId)) return;
+    try {
+        ap?.pause();
+        ap?.list?.clear();
+    } catch (_) {}
+    currentPlayingId = null;
+    highlightCard(null);
+    syncAllPlayButtons();
+    syncMediaSession();
+}
+
+async function deleteLocalMusicFromButton(btn) {
+    const card = btn?.closest('.song-card');
+    const song = songFromCard(card);
+    if (!song || !isLocalMusicSourceValue(song.source)) return;
+    if (!confirmLocalMusicDeletion([song])) return;
+
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+    try {
+        await deleteLocalMusic(song.id);
+        stopDeletedLocalMusicPlayback(new Set([song.id]));
+        await refreshCurrentPageContent({ scroll: false });
+    } catch (error) {
+        alert(error.message || '删除失败');
+    } finally {
+        if (btn.isConnected) {
+            btn.innerHTML = originalHTML;
+            btn.disabled = false;
+        }
+    }
+}
+
 async function batchDeleteLocalMusic() {
     const songs = getSelectedSongs().filter(song => isLocalMusicSourceValue(song.source));
     if (songs.length === 0) return;
 
-    if (!confirm(`准备删除 ${songs.length} 首本地音乐文件。\n删除后文件会从本地下载目录移除，且不可恢复。`)) {
+    if (!confirmLocalMusicDeletion(songs)) {
         return;
     }
 
@@ -2432,14 +2485,7 @@ async function batchDeleteLocalMusic() {
             }
         }
 
-        if (currentPlayingId && deletedIds.has(currentPlayingId)) {
-            try {
-                ap?.pause();
-                ap?.list?.clear();
-            } catch (_) {}
-            currentPlayingId = null;
-            highlightCard(null);
-        }
+        stopDeletedLocalMusicPlayback(deletedIds);
 
         let message = `批量删除完成，成功 ${success}/${songs.length}`;
         message += buildBatchFailureMessage(failures, '失败');

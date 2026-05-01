@@ -155,6 +155,8 @@ func TestLocalMusicPageRendersSongListWithoutUnsupportedActions(t *testing.T) {
 				Artist:   "Local Artist",
 				Album:    "Local Album",
 				Duration: 125,
+				Cover:    RoutePrefix + "/local_music/cover?id=" + url.QueryEscape(encodeLocalMusicID("Local Track.mp3")),
+				Extra:    map[string]string{"lyric": "true", "cover": "true"},
 			},
 		}, nil, "", nil, "", "local_music", "", "", "", false, "", nil)
 	})
@@ -177,6 +179,11 @@ func TestLocalMusicPageRendersSongListWithoutUnsupportedActions(t *testing.T) {
 		`class="tag tag-local"`,
 		`>本地</span>`,
 		`class="btn-circle btn-play"`,
+		`class="btn-circle btn-dl btn-lyric"`,
+		`class="btn-circle btn-dl btn-cover"`,
+		`class="btn-circle btn-delete-local"`,
+		`onclick="deleteLocalMusicFromButton(this)"`,
+		`/local_music/cover?id=`,
 	}
 	for _, token := range required {
 		if !strings.Contains(body, token) {
@@ -188,8 +195,6 @@ func TestLocalMusicPageRendersSongListWithoutUnsupportedActions(t *testing.T) {
 		`class="btn-circle btn-switch"`,
 		`class="btn-circle btn-fav"`,
 		`class="btn-circle btn-dl btn-download"`,
-		`class="btn-circle btn-dl btn-lyric"`,
-		`class="btn-circle btn-dl btn-cover"`,
 		`id="btn-batch-switch"`,
 		`id="btn-batch-dl"`,
 		`selectInvalidSongs()`,
@@ -200,6 +205,98 @@ func TestLocalMusicPageRendersSongListWithoutUnsupportedActions(t *testing.T) {
 		if strings.Contains(body, token) {
 			t.Fatalf("local music page should not render %q: %s", token, body)
 		}
+	}
+}
+
+func TestLocalMusicSidecarCoverAndLyricFallbacks(t *testing.T) {
+	initCollectionDBForTest(t)
+
+	downloadDir := t.TempDir()
+	withLocalMusicDownloadDir(t, downloadDir)
+
+	audioPath := filepath.Join(downloadDir, "Sidecar Song.mp3")
+	coverPath := filepath.Join(downloadDir, "Sidecar Song.png")
+	lyricPath := filepath.Join(downloadDir, "Sidecar Song.lrc")
+	coverBytes := []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
+	lyricText := "[00:01.00]Sidecar lyric line"
+	if err := os.WriteFile(audioPath, []byte("not a real mp3"), 0644); err != nil {
+		t.Fatalf("write local audio: %v", err)
+	}
+	if err := os.WriteFile(coverPath, coverBytes, 0644); err != nil {
+		t.Fatalf("write sidecar cover: %v", err)
+	}
+	if err := os.WriteFile(lyricPath, []byte(lyricText), 0644); err != nil {
+		t.Fatalf("write sidecar lyric: %v", err)
+	}
+
+	router := newLocalMusicTestRouter()
+	req := httptest.NewRequest(http.MethodGet, RoutePrefix+"/local_music", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /local_music status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp struct {
+		Tracks []localMusicTrack `json:"tracks"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode local music response: %v", err)
+	}
+	if len(resp.Tracks) != 1 {
+		t.Fatalf("local music tracks len = %d, want 1", len(resp.Tracks))
+	}
+
+	track := resp.Tracks[0]
+	if track.Cover == "" {
+		t.Fatal("track.Cover is empty, want local cover URL")
+	}
+	if track.Extra["cover_source"] != "sidecar" {
+		t.Fatalf("cover_source = %q, want sidecar", track.Extra["cover_source"])
+	}
+	if track.Extra["lyric_source"] != "sidecar" {
+		t.Fatalf("lyric_source = %q, want sidecar", track.Extra["lyric_source"])
+	}
+
+	req = httptest.NewRequest(http.MethodGet, RoutePrefix+"/local_music/cover?id="+url.QueryEscape(track.ID), nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET local cover status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); got != "image/png" {
+		t.Fatalf("local cover content type = %q, want image/png", got)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), coverBytes) {
+		t.Fatalf("local cover body = %v, want %v", rec.Body.Bytes(), coverBytes)
+	}
+
+	lyricURL := fmt.Sprintf("%s/download_lrc?id=%s&source=%s&name=Sidecar%%20Song&artist=Unknown", RoutePrefix, url.QueryEscape(track.ID), localMusicSource)
+	req = httptest.NewRequest(http.MethodGet, lyricURL, nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET local download_lrc status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), lyricText) {
+		t.Fatalf("local download_lrc body = %q, want lyric %q", rec.Body.String(), lyricText)
+	}
+	if !strings.Contains(rec.Header().Get("Content-Disposition"), ".lrc") {
+		t.Fatalf("local download_lrc missing lrc download header: %q", rec.Header().Get("Content-Disposition"))
+	}
+
+	req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("%s/lyric?id=%s&source=%s", RoutePrefix, url.QueryEscape(track.ID), localMusicSource), nil)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET local lyric status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), lyricText) {
+		t.Fatalf("local lyric body = %q, want lyric %q", rec.Body.String(), lyricText)
 	}
 }
 

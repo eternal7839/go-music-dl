@@ -617,6 +617,11 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		name := song.Name
 		artist := song.Artist
 
+		if isLocalMusicSource(song.Source) {
+			serveLocalMusicLyric(c, song, true)
+			return
+		}
+
 		fn := core.GetLyricFunc(song.Source)
 		if fn == nil {
 			c.String(404, "No support")
@@ -671,6 +676,11 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 
 	api.GET("/lyric", func(c *gin.Context) {
 		song := lyricSongFromQuery(c)
+		if isLocalMusicSource(song.Source) {
+			serveLocalMusicLyric(c, song, false)
+			return
+		}
+
 		fn := core.GetLyricFunc(song.Source)
 		if fn != nil {
 			lrc, _ := fn(song)

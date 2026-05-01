@@ -229,6 +229,8 @@ body.batch-mode .song-card { padding-left: 10px; }
 .btn-switch:hover { border-color: #fb923c; color: #c2410c; }
 .btn-fav { background: #fff5f5; color: #fc8181; border: 1px solid #fed7d7; }
 .btn-fav:hover { background: #fed7d7; color: #e53e3e; border-color: #fc8181; }
+.btn-delete-local { background: #fff5f5; color: #e53e3e; border: 1px solid #fed7d7; }
+.btn-delete-local:hover { background: #fed7d7; color: #b91c1c; border-color: #fc8181; }
 
 .playlist-grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px; }
 .playlist-card { background: #fff; border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); cursor: pointer; transition: all 0.2s; display: flex; flex-direction: column; text-decoration: none; color: inherit; position: relative; }
