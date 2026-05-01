@@ -376,9 +376,9 @@ async function handleDownloadClick(link) {
     link.style.opacity = '0.6';
     try {
         const data = await requestLocalDownload(link.href);
-        let message = `宸蹭繚瀛樺埌:\n${data.path || webSettings.downloadDir}`;
+        let message = `已保存到:\n${data.path || webSettings.downloadDir}`;
         if (data.warning) {
-            message += `\n\n鎻愮ず: ${data.warning}`;
+            message += `\n\n提示: ${data.warning}`;
         }
         alert(message);
     } catch (error) {

@@ -166,14 +166,14 @@
                 {{ if $isLocalMusicPage }}
                 {{ if index .Extra "lyric" }}
                 <a href="{{$.Root}}/download_lrc?id={{.ID}}&source={{.Source}}&name={{.Name}}&artist={{.Artist}}&album={{.Album}}&duration={{.Duration}}&extra={{urlquery (tojson .Extra)}}"
-                   id="lrc-{{.ID}}" class="btn-circle btn-dl btn-lyric" title="涓嬭浇姝岃瘝" target="_blank">
+                   id="lrc-{{.ID}}" class="btn-circle btn-dl btn-lyric" title="下载歌词" target="_blank">
                     <i class="fa-solid fa-file-lines"></i>
                 </a>
                 {{ end }}
 
                 {{ if .Cover }}
                 <a href="{{$.Root}}/local_music/cover?id={{urlquery .ID}}&download=1&name={{urlquery .Name}}&artist={{urlquery .Artist}}"
-                   class="btn-circle btn-dl btn-cover" title="涓嬭浇灏侀潰" target="_blank">
+                   class="btn-circle btn-dl btn-cover" title="下载封面" target="_blank">
                     <i class="fa-regular fa-image"></i>
                 </a>
                 {{ end }}
