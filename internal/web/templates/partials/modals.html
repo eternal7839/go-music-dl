@@ -20,7 +20,7 @@
                     <span class="setting-switch" aria-hidden="true"></span>
                     <span class="setting-toggle-text">下载时内嵌元数据（封面、歌词）</span>
                 </label>
-                <p class="setting-hint">为保证下载速度，默认关闭内嵌；关闭时使用流式下载。</p>
+                <p class="setting-hint">仅影响下载文件；播放始终使用流式下载，不内嵌元数据。</p>
             </div>
             <div class="cookie-item setting-item">
                 <label class="setting-toggle" for="setting-download-to-local">
@@ -32,8 +32,19 @@
             </div>
             <div class="cookie-item">
                 <label for="setting-download-dir">本地下载目录</label>
-                <input type="text" id="setting-download-dir" placeholder="例如: data/downloads、D:/Music/Downloads 或 /sdcard/Music">
-                <p class="setting-hint" style="margin-left: 0;">支持手填相对目录和绝对目录。相对目录示例：<code>data/downloads</code>；绝对目录示例：<code>D:/Music/Downloads</code>。Android 建议设置为 <code>/sdcard/Music</code>，便于系统音乐应用识别。</p>
+                <div class="download-dir-control">
+                    <select id="setting-download-dir-preset" aria-label="本地下载目录预设" aria-describedby="setting-download-dir-hint">
+                        <option value="data/downloads">PC 默认：data/downloads</option>
+                        <option value="downloads">PC 简洁：downloads</option>
+                        <option value="D:/Music/Downloads">PC 示例：D:/Music/Downloads</option>
+                        <option value="/sdcard/Music">Android 默认：/sdcard/Music</option>
+                        <option value="/storage/emulated/0/Music">Android 兼容：/storage/emulated/0/Music</option>
+                        <option value="/sdcard/Download">Android 下载：/sdcard/Download</option>
+                        <option value="__custom__">自定义目录...</option>
+                    </select>
+                    <input type="text" id="setting-download-dir" aria-describedby="setting-download-dir-hint" placeholder="例如: data/downloads、D:/Music/Downloads 或 /sdcard/Music">
+                </div>
+                <p id="setting-download-dir-hint" class="setting-hint" style="margin-left: 0;">选择预设会自动填入路径，也可以手填相对目录或绝对目录。Android 建议使用 <code>/sdcard/Music</code>，便于系统音乐应用识别。</p>
             </div>
             <div class="cookie-item">
                 <label for="setting-web-page-size">Web 每页条数</label>

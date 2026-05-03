@@ -7,6 +7,16 @@ const DEFAULT_WEB_PAGE_SIZE = 50;
 const DEFAULT_CLI_PAGE_SIZE = 50;
 const LOCAL_MUSIC_SOURCE = 'local';
 const LEGACY_LOCAL_MUSIC_SOURCE = 'local-file';
+const DOWNLOAD_DIR_CUSTOM_VALUE = '__custom__';
+const DOWNLOAD_DIR_PRESET_VALUES = [
+    'data/downloads',
+    'downloads',
+    'D:/Music/Downloads',
+    '/sdcard/Music',
+    '/storage/emulated/0/Music',
+    '/sdcard/Download'
+];
+const DOWNLOAD_DIR_PRESETS = new Set(DOWNLOAD_DIR_PRESET_VALUES);
 
 function isLocalMusicSourceValue(source) {
     const value = String(source || '').trim();
@@ -104,6 +114,32 @@ function applyVideoGenFeatureVisibility() {
     });
 }
 
+function syncDownloadDirPresetFromInput() {
+    const presetSelect = document.getElementById('setting-download-dir-preset');
+    const dirInput = document.getElementById('setting-download-dir');
+    if (!presetSelect || !dirInput) return;
+
+    const value = String(dirInput.value || '').trim();
+    const normalizedValue = value.replace(/\\/g, '/');
+    presetSelect.value = DOWNLOAD_DIR_PRESETS.has(normalizedValue) ? normalizedValue : DOWNLOAD_DIR_CUSTOM_VALUE;
+}
+
+function bindDownloadDirPresetEvents() {
+    const presetSelect = document.getElementById('setting-download-dir-preset');
+    const dirInput = document.getElementById('setting-download-dir');
+    if (!presetSelect || !dirInput || presetSelect.dataset.bound === '1') return;
+
+    presetSelect.dataset.bound = '1';
+    presetSelect.addEventListener('change', () => {
+        if (presetSelect.value === DOWNLOAD_DIR_CUSTOM_VALUE) {
+            dirInput.focus();
+            return;
+        }
+        dirInput.value = presetSelect.value;
+    });
+    dirInput.addEventListener('input', syncDownloadDirPresetFromInput);
+}
+
 function applyWebSettings(settings) {
     webSettings = normalizeWebSettings(settings);
     persistWebSettingsCache();
@@ -122,6 +158,8 @@ function applyWebSettings(settings) {
     if (dirInput) {
         dirInput.value = webSettings.downloadDir;
     }
+    bindDownloadDirPresetEvents();
+    syncDownloadDirPresetFromInput();
 
     const webPageSizeInput = document.getElementById('setting-web-page-size');
     if (webPageSizeInput) {
@@ -189,13 +227,16 @@ function buildDownloadRequestURL(id, source, name, artist, cover, extra, options
     if (options.saveLocal) {
         params.set('save_local', '1');
     }
+    if (options.stream) {
+        params.set('stream', '1');
+    }
 
     return `${API_ROOT}/download?${params.toString()}`;
 }
 
 function buildStreamURL(id, source, name, artist, cover, extra) {
     return buildDownloadRequestURL(id, source, name, artist, cover, extra, {
-        embed: webSettings.embedDownload
+        stream: true
     });
 }
 
@@ -339,56 +380,68 @@ function getDownloadFilenameFromResponse(response, song) {
 }
 
 async function requestBrowserDownload(song) {
-    const response = await fetch(song.url);
-    if (!response.ok) {
-        let reason = '';
-        try {
-            reason = (await response.text()).trim();
-        } catch (_) {
-        }
-        throw new Error(reason || `HTTP ${response.status}`);
+    const url = String(song?.url || '').trim();
+    if (!url) {
+        throw new Error('下载地址为空');
     }
 
-    const blob = await response.blob();
-    const filename = getDownloadFilenameFromResponse(response, song);
-    const objectUrl = URL.createObjectURL(blob);
+    let frame = document.getElementById('browser-download-frame');
+    if (!frame) {
+        frame = document.createElement('iframe');
+        frame.id = 'browser-download-frame';
+        frame.name = 'browser-download-frame';
+        frame.style.display = 'none';
+        document.body.appendChild(frame);
+    }
+
     const link = document.createElement('a');
 
-    link.href = objectUrl;
-    link.download = filename;
+    link.href = url;
+    link.target = frame.name;
+    link.rel = 'noopener';
+    link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
+    await new Promise(resolve => window.setTimeout(resolve, 250));
 
     return {
-        warning: response.headers.get('X-MusicDL-Warning') || ''
+        triggered: true,
+        warning: ''
     };
 }
 
 async function handleDownloadClick(link) {
-    if (!webSettings.downloadToLocal || !link) {
+    if (!link) {
         return false;
     }
 
     link.style.pointerEvents = 'none';
     link.style.opacity = '0.6';
     try {
-        const data = await requestLocalDownload(link.href);
-        let message = `已保存到:\n${data.path || webSettings.downloadDir}`;
-        if (data.warning) {
-            message += `\n\n提示: ${data.warning}`;
+        if (webSettings.downloadToLocal) {
+            const data = await requestLocalDownload(link.href);
+            let message = `已保存到:\n${data.path || webSettings.downloadDir}`;
+            if (data.warning) {
+                message += `\n\n提示: ${data.warning}`;
+            }
+            alert(message);
+            return true;
         }
-        alert(message);
+
+        if (webSettings.embedDownload) {
+            await requestBrowserDownload({ url: link.href });
+            return true;
+        }
     } catch (error) {
-        alert(error.message || '保存失败');
+        alert(error.message || '下载失败');
     } finally {
         link.style.pointerEvents = '';
         link.style.opacity = '';
     }
 
-    return true;
+    return false;
 }
 
 let navigationAbortController = null;
@@ -664,7 +717,7 @@ function bindPageNavigationEvents() {
     document.addEventListener('click', async function(event) {
         const link = event.target.closest('.btn-download');
         if (!link) return;
-        if (!webSettings.downloadToLocal) return;
+        if (!webSettings.downloadToLocal && !webSettings.embedDownload) return;
         event.preventDefault();
         await handleDownloadClick(link);
     });
@@ -1678,7 +1731,7 @@ const ap = new APlayer({
     theme: '#10b981',
     loop: 'all', 
     order: 'list', 
-    preload: 'auto', 
+    preload: 'metadata',
     volume: 0.7, 
     listFolded: false, 
     lrcType: 3, 
@@ -2328,7 +2381,7 @@ async function batchDownload() {
             return;
         }
     } else {
-        if (!confirm(`准备下载 ${songs.length} 首歌曲。\n下载会依次开始，请保持页面打开直到提示完成。`)) {
+        if (!confirm(`准备下载 ${songs.length} 首歌曲。\n下载会依次交给浏览器下载管理器，请保持页面打开。`)) {
             return;
         }
     }
@@ -2365,7 +2418,7 @@ async function batchDownload() {
 
         let message = webSettings.downloadToLocal
             ? `本地保存完成，成功 ${success}/${songs.length}`
-            : `批量下载已完成，成功 ${success}/${songs.length}`;
+            : `批量下载已触发，成功 ${success}/${songs.length}`;
 
         if (webSettings.downloadToLocal) {
             message += `\n目录：${webSettings.downloadDir}`;

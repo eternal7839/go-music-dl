@@ -99,6 +99,48 @@ func TestAppJSIncludesAjaxNavigationEntryPoints(t *testing.T) {
 	}
 }
 
+func TestAppJSPlaybackURLIgnoresEmbedDownloadSetting(t *testing.T) {
+	content, err := templateFS.ReadFile("templates/static/js/app.js")
+	if err != nil {
+		t.Fatalf("ReadFile(app.js): %v", err)
+	}
+
+	js := string(content)
+	if !strings.Contains(js, "function buildStreamURL(id, source, name, artist, cover, extra)") {
+		t.Fatal("app.js missing buildStreamURL")
+	}
+	if !strings.Contains(js, "stream: true") {
+		t.Fatal("buildStreamURL should force stream=1")
+	}
+	if strings.Contains(js, "function buildStreamURL(id, source, name, artist, cover, extra) {\n    return buildDownloadRequestURL(id, source, name, artist, cover, extra, {\n        embed: webSettings.embedDownload") {
+		t.Fatal("buildStreamURL must not follow embedDownload; playback should always use plain streaming")
+	}
+	if !strings.Contains(js, "preload: 'metadata'") {
+		t.Fatal("APlayer should preload metadata instead of full audio")
+	}
+}
+
+func TestSettingsModalIncludesDownloadDirPresets(t *testing.T) {
+	content, err := templateFS.ReadFile("templates/partials/modals.html")
+	if err != nil {
+		t.Fatalf("ReadFile(modals.html): %v", err)
+	}
+
+	html := string(content)
+	for _, want := range []string{
+		`id="setting-download-dir-preset"`,
+		`PC 默认：data/downloads`,
+		`PC 示例：D:/Music/Downloads`,
+		`Android 默认：/sdcard/Music`,
+		`Android 兼容：/storage/emulated/0/Music`,
+		`自定义目录...`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("settings modal missing download dir preset %q", want)
+		}
+	}
+}
+
 func TestPaginationTemplatesExposeShortcutMetadata(t *testing.T) {
 	paths := []string{
 		"templates/partials/song_list.html",

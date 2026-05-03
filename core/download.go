@@ -44,9 +44,13 @@ func DownloadSongData(song *model.Song, withCover bool, withLyrics bool) (*Downl
 		return nil, err
 	}
 
-	ext := DetectAudioExt(audioData)
-	if extByType := DetectAudioExtByContentType(contentType); extByType != "" {
-		ext = extByType
+	signatureExt := DetectAudioExtBySignature(audioData)
+	ext := signatureExt
+	if ext == "" {
+		ext = DetectAudioExtByContentType(contentType)
+	}
+	if ext == "" {
+		ext = DetectAudioExt(audioData)
 	}
 
 	var lyric string

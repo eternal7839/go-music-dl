@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,7 @@ var ErrFFmpegNotFound = errors.New("ffmpeg not found")
 const (
 	UA_Common    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
 	UA_Mobile    = "Mozilla/5.0 (iPhone; CPU iPhone OS 9_1 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Version/9.0 Mobile/13B143 Safari/601.1"
+	Ref_Netease  = "http://music.163.com/"
 	Ref_Bilibili = "https://www.bilibili.com/"
 	Ref_Migu     = "http://music.migu.cn/"
 	CookieFile   = "data/cookies.json"
@@ -533,6 +535,9 @@ func BuildSourceRequest(method, urlStr, source, rangeHeader string) (*http.Reque
 	if source == "bilibili" {
 		req.Header.Set("Referer", Ref_Bilibili)
 	}
+	if source == "netease" {
+		req.Header.Set("Referer", Ref_Netease)
+	}
 	if source == "migu" {
 		req.Header.Set("User-Agent", UA_Mobile)
 		req.Header.Set("Referer", Ref_Migu)
@@ -588,6 +593,13 @@ func FormatSize(s int64) string {
 }
 
 func DetectAudioExt(data []byte) string {
+	if ext := DetectAudioExtBySignature(data); ext != "" {
+		return ext
+	}
+	return "mp3"
+}
+
+func DetectAudioExtBySignature(data []byte) string {
 	if len(data) >= 16 && bytes.Equal(data[:16], []byte{0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C}) {
 		return "wma"
 	}
@@ -606,7 +618,7 @@ func DetectAudioExt(data []byte) string {
 	if len(data) >= 12 && bytes.Equal(data[4:8], []byte{'f', 't', 'y', 'p'}) {
 		return "m4a"
 	}
-	return "mp3"
+	return ""
 }
 
 func DetectAudioExtByContentType(contentType string) string {
@@ -942,12 +954,29 @@ func normalizeCoverMime(coverMime string) string {
 }
 
 func FetchBytesWithMime(urlStr string, source string) ([]byte, string, error) {
+	if fetch, handled, err := NewSourceRangeFetch(urlStr, source, ""); handled || err != nil {
+		if err != nil {
+			return nil, "", err
+		}
+		var buf bytes.Buffer
+		if fetch.ContentLength > 0 && fetch.ContentLength <= int64(1<<(strconv.IntSize-1)-1) {
+			buf.Grow(int(fetch.ContentLength))
+		}
+		if err := fetch.WriteTo(&buf); err != nil {
+			return nil, "", err
+		}
+		return buf.Bytes(), fetch.ContentType, nil
+	}
+	return fetchBytesSingle(urlStr, source)
+}
+
+func fetchBytesSingle(urlStr string, source string) ([]byte, string, error) {
 	req, err := BuildSourceRequest("GET", urlStr, source, "")
 	if err != nil {
 		return nil, "", err
 	}
 
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: 2 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", err
@@ -973,6 +1002,284 @@ func FetchBytesWithMime(urlStr string, source string) ([]byte, string, error) {
 	}
 
 	return data, contentType, nil
+}
+
+type SourceRangeFetch struct {
+	URL           string
+	Source        string
+	StatusCode    int
+	ContentLength int64
+	ContentRange  string
+	ContentType   string
+	Ext           string
+	Start         int64
+	End           int64
+	Total         int64
+}
+
+func NewSourceRangeFetch(urlStr string, source string, rangeHeader string) (*SourceRangeFetch, bool, error) {
+	req, err := BuildSourceRequest("GET", urlStr, source, "bytes=0-3")
+	if err != nil {
+		return nil, false, err
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, false, nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusPartialContent {
+		return nil, false, nil
+	}
+
+	total, ok := parseContentRangeTotal(resp.Header.Get("Content-Range"))
+	if !ok || total <= 0 {
+		return nil, false, nil
+	}
+	if total > int64(1<<(strconv.IntSize-1)-1) {
+		return nil, true, fmt.Errorf("download too large: %d bytes", total)
+	}
+
+	probeData, _ := io.ReadAll(resp.Body)
+	ext := DetectAudioExtBySignature(probeData)
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if idx := strings.Index(contentType, ";"); idx >= 0 {
+		contentType = strings.TrimSpace(contentType[:idx])
+	}
+	if ext == "" {
+		ext = DetectAudioExtByContentType(contentType)
+	}
+	if ext != "" && (contentType == "" || strings.HasPrefix(strings.ToLower(contentType), "application/octet-stream")) {
+		contentType = AudioMimeByExt(ext)
+	}
+
+	start, end, partial, ok := resolveRangeHeader(rangeHeader, total)
+	if !ok {
+		return nil, true, fmt.Errorf("invalid range: %s", rangeHeader)
+	}
+
+	fetch := &SourceRangeFetch{
+		URL:           urlStr,
+		Source:        source,
+		StatusCode:    http.StatusOK,
+		ContentLength: end - start + 1,
+		ContentType:   contentType,
+		Ext:           ext,
+		Start:         start,
+		End:           end,
+		Total:         total,
+	}
+	if partial {
+		fetch.StatusCode = http.StatusPartialContent
+		fetch.ContentRange = fmt.Sprintf("bytes %d-%d/%d", start, end, total)
+	}
+	return fetch, true, nil
+}
+
+func (f *SourceRangeFetch) WriteTo(w io.Writer) error {
+	if f == nil {
+		return errors.New("nil range fetch")
+	}
+	return writeParallelRange(w, f.URL, f.Source, f.Start, f.End)
+}
+
+type rangeChunkJob struct {
+	index int
+	start int64
+	end   int64
+}
+
+type rangeChunkResult struct {
+	index       int
+	data        []byte
+	contentType string
+	err         error
+}
+
+func writeParallelRange(w io.Writer, urlStr string, source string, start int64, end int64) error {
+	if end < start {
+		return nil
+	}
+
+	const firstChunkSize int64 = 32 * 1024
+	const chunkSize int64 = 256 * 1024
+	const maxConcurrentChunks = 16
+
+	jobs := buildRangeChunkJobs(start, end, firstChunkSize, chunkSize)
+
+	sem := make(chan struct{}, maxConcurrentChunks)
+	results := make(chan rangeChunkResult, len(jobs))
+
+	for _, job := range jobs {
+		job := job
+		go func() {
+			sem <- struct{}{}
+			chunk, chunkContentType, err := fetchRangeChunk(urlStr, source, job.start, job.end)
+			<-sem
+			results <- rangeChunkResult{index: job.index, data: chunk, contentType: chunkContentType, err: err}
+		}()
+	}
+
+	next := 0
+	pending := make(map[int]rangeChunkResult)
+	for next < len(jobs) {
+		result := <-results
+		if result.err != nil {
+			return result.err
+		}
+		pending[result.index] = result
+
+		for {
+			ready, ok := pending[next]
+			if !ok {
+				break
+			}
+			if _, err := w.Write(ready.data); err != nil {
+				return err
+			}
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			delete(pending, next)
+			next++
+		}
+	}
+
+	return nil
+}
+
+func buildRangeChunkJobs(start int64, end int64, firstChunkSize int64, chunkSize int64) []rangeChunkJob {
+	var jobs []rangeChunkJob
+	firstEnd := start + firstChunkSize - 1
+	if firstEnd > end {
+		firstEnd = end
+	}
+	jobs = append(jobs, rangeChunkJob{index: len(jobs), start: start, end: firstEnd})
+	for chunkStart := firstEnd + 1; chunkStart <= end; chunkStart += chunkSize {
+		chunkEnd := chunkStart + chunkSize - 1
+		if chunkEnd > end {
+			chunkEnd = end
+		}
+		jobs = append(jobs, rangeChunkJob{index: len(jobs), start: chunkStart, end: chunkEnd})
+	}
+	return jobs
+}
+
+func fetchRangeChunk(urlStr string, source string, start int64, end int64) ([]byte, string, error) {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		req, err := BuildSourceRequest("GET", urlStr, source, fmt.Sprintf("bytes=%d-%d", start, end))
+		if err != nil {
+			return nil, "", err
+		}
+
+		client := &http.Client{Timeout: 90 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		data, readErr := io.ReadAll(resp.Body)
+		contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+		if idx := strings.Index(contentType, ";"); idx >= 0 {
+			contentType = strings.TrimSpace(contentType[:idx])
+		}
+		_ = resp.Body.Close()
+
+		if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("range %d-%d returned status %d", start, end, resp.StatusCode)
+			continue
+		}
+		if readErr != nil {
+			lastErr = readErr
+			continue
+		}
+		expected := int(end - start + 1)
+		if len(data) != expected {
+			lastErr = fmt.Errorf("range %d-%d returned %d bytes, want %d", start, end, len(data), expected)
+			continue
+		}
+		return data, contentType, nil
+	}
+	return nil, "", lastErr
+}
+
+func parseContentRangeTotal(value string) (int64, bool) {
+	parts := strings.Split(strings.TrimSpace(value), "/")
+	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "*" {
+		return 0, false
+	}
+	total, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return total, true
+}
+
+func resolveRangeHeader(value string, total int64) (int64, int64, bool, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, total - 1, false, true
+	}
+	if !strings.HasPrefix(strings.ToLower(value), "bytes=") {
+		return 0, 0, false, false
+	}
+
+	spec := strings.TrimSpace(value[len("bytes="):])
+	if strings.Contains(spec, ",") {
+		return 0, 0, false, false
+	}
+
+	parts := strings.SplitN(spec, "-", 2)
+	if len(parts) != 2 {
+		return 0, 0, false, false
+	}
+
+	left := strings.TrimSpace(parts[0])
+	right := strings.TrimSpace(parts[1])
+	var start, end int64
+	var err error
+
+	switch {
+	case left == "" && right == "":
+		return 0, 0, false, false
+	case left == "":
+		suffix, err := strconv.ParseInt(right, 10, 64)
+		if err != nil || suffix <= 0 {
+			return 0, 0, false, false
+		}
+		if suffix > total {
+			suffix = total
+		}
+		start = total - suffix
+		end = total - 1
+	case right == "":
+		start, err = strconv.ParseInt(left, 10, 64)
+		if err != nil || start < 0 || start >= total {
+			return 0, 0, false, false
+		}
+		end = total - 1
+	default:
+		start, err = strconv.ParseInt(left, 10, 64)
+		if err != nil || start < 0 {
+			return 0, 0, false, false
+		}
+		end, err = strconv.ParseInt(right, 10, 64)
+		if err != nil || end < start {
+			return 0, 0, false, false
+		}
+		if start >= total {
+			return 0, 0, false, false
+		}
+		if end >= total {
+			end = total - 1
+		}
+	}
+
+	return start, end, true, true
 }
 
 func EmbedSongMetadata(audioData []byte, song *model.Song, lyric string, coverData []byte, coverMime string) ([]byte, error) {

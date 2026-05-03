@@ -468,9 +468,10 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		name := c.Query("name")
 		artist := c.Query("artist")
 		coverURL := strings.TrimSpace(c.Query("cover"))
+		streamPlayback := c.Query("stream") == "1"
 		noRangeRequest := strings.TrimSpace(c.GetHeader("Range")) == ""
-		embedMeta := c.Query("embed") == "1" && noRangeRequest
-		saveLocal := c.Query("save_local") == "1" && noRangeRequest
+		embedMeta := !streamPlayback && c.Query("embed") == "1" && noRangeRequest
+		saveLocal := !streamPlayback && c.Query("save_local") == "1" && noRangeRequest
 		extra := parseSongExtraQuery(c.Query("extra"))
 
 		if id == "" || source == "" {
@@ -555,7 +556,9 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 			}
 			ext := core.DetectAudioExt(finalData)
 			filename := fmt.Sprintf("%s.%s", baseFilename, ext)
-			setDownloadHeader(c, filename)
+			if !streamPlayback {
+				setDownloadHeader(c, filename)
+			}
 			http.ServeContent(c.Writer, c.Request, filename, time.Now(), bytes.NewReader(finalData))
 			return
 		}
@@ -569,6 +572,37 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		downloadUrl, err := dlFunc(tempSong)
 		if err != nil {
 			c.String(404, "Failed to get URL")
+			return
+		}
+
+		if rangeFetch, handled, rangeErr := core.NewSourceRangeFetch(downloadUrl, source, c.GetHeader("Range")); rangeErr != nil {
+			c.String(502, "Upstream range error")
+			return
+		} else if handled {
+			ext := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(rangeFetch.Ext, ".")))
+			if ext == "" {
+				ext = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(tempSong.Ext, ".")))
+			}
+			if ext == "" {
+				ext = "mp3"
+			}
+
+			filename := fmt.Sprintf("%s.%s", baseFilename, ext)
+			if streamPlayback {
+				c.Header("Content-Type", core.AudioMimeByExt(ext))
+			} else {
+				setDownloadHeader(c, filename)
+				c.Header("Content-Type", core.AudioMimeByExt(ext))
+			}
+			c.Header("Accept-Ranges", "bytes")
+			c.Header("Content-Length", strconv.FormatInt(rangeFetch.ContentLength, 10))
+			if rangeFetch.ContentRange != "" {
+				c.Header("Content-Range", rangeFetch.ContentRange)
+			}
+			c.Status(rangeFetch.StatusCode)
+			if err := rangeFetch.WriteTo(c.Writer); err != nil {
+				return
+			}
 			return
 		}
 
@@ -603,11 +637,21 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 			}
 		}
 		if ext == "" {
+			ext = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(tempSong.Ext, ".")))
+		}
+		if ext == "" {
 			ext = "mp3"
 		}
 
 		filename := fmt.Sprintf("%s.%s", baseFilename, ext)
-		setDownloadHeader(c, filename)
+		if streamPlayback {
+			contentType := strings.TrimSpace(strings.ToLower(resp.Header.Get("Content-Type")))
+			if contentType == "" || strings.HasPrefix(contentType, "application/octet-stream") {
+				c.Header("Content-Type", core.AudioMimeByExt(ext))
+			}
+		} else {
+			setDownloadHeader(c, filename)
+		}
 		c.Status(resp.StatusCode)
 		io.Copy(c.Writer, resp.Body)
 	})
