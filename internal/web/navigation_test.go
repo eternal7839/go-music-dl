@@ -106,17 +106,43 @@ func TestAppJSPlaybackURLIgnoresEmbedDownloadSetting(t *testing.T) {
 	}
 
 	js := string(content)
-	if !strings.Contains(js, "function buildStreamURL(id, source, name, artist, cover, extra)") {
+	if !strings.Contains(js, "function buildStreamURL(id, source, name, artist, album, cover, extra)") {
 		t.Fatal("app.js missing buildStreamURL")
 	}
 	if !strings.Contains(js, "stream: true") {
 		t.Fatal("buildStreamURL should force stream=1")
 	}
-	if strings.Contains(js, "function buildStreamURL(id, source, name, artist, cover, extra) {\n    return buildDownloadRequestURL(id, source, name, artist, cover, extra, {\n        embed: webSettings.embedDownload") {
+	if strings.Contains(js, "function buildStreamURL(id, source, name, artist, album, cover, extra) {\n    return buildDownloadRequestURL(id, source, name, artist, album, cover, extra, {\n        embed: webSettings.embedDownload") {
 		t.Fatal("buildStreamURL must not follow embedDownload; playback should always use plain streaming")
 	}
 	if !strings.Contains(js, "preload: 'metadata'") {
 		t.Fatal("APlayer should preload metadata instead of full audio")
+	}
+}
+
+func TestDownloadURLsCarryAlbumForMetadataEmbedding(t *testing.T) {
+	jsContent, err := templateFS.ReadFile("templates/static/js/app.js")
+	if err != nil {
+		t.Fatalf("ReadFile(app.js): %v", err)
+	}
+	js := string(jsContent)
+	for _, want := range []string{
+		"function buildDownloadRequestURL(id, source, name, artist, album, cover, extra, options = {})",
+		"params.set('album', albumValue);",
+		"buildDownloadURL(ds.id, ds.source, ds.name, ds.artist, ds.album || ''",
+		"buildDownloadURL(song.id, song.source, song.name, song.artist, song.album || ''",
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("app.js missing album download URL token %q", want)
+		}
+	}
+
+	htmlContent, err := templateFS.ReadFile("templates/partials/song_list.html")
+	if err != nil {
+		t.Fatalf("ReadFile(song_list.html): %v", err)
+	}
+	if !strings.Contains(string(htmlContent), `&album={{urlquery .Album}}`) {
+		t.Fatal("song_list.html download link should include album query parameter")
 	}
 }
 

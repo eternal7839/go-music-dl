@@ -467,12 +467,16 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		source := c.Query("source")
 		name := c.Query("name")
 		artist := c.Query("artist")
+		album := strings.TrimSpace(c.Query("album"))
 		coverURL := strings.TrimSpace(c.Query("cover"))
 		streamPlayback := c.Query("stream") == "1"
 		noRangeRequest := strings.TrimSpace(c.GetHeader("Range")) == ""
 		embedMeta := !streamPlayback && c.Query("embed") == "1" && noRangeRequest
 		saveLocal := !streamPlayback && c.Query("save_local") == "1" && noRangeRequest
 		extra := parseSongExtraQuery(c.Query("extra"))
+		if album == "" && extra != nil {
+			album = strings.TrimSpace(extra["album"])
+		}
 
 		if id == "" || source == "" {
 			c.String(400, "Missing params")
@@ -490,7 +494,7 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 			return
 		}
 
-		tempSong := &model.Song{ID: id, Source: source, Name: name, Artist: artist, Cover: coverURL, Extra: extra}
+		tempSong := &model.Song{ID: id, Source: source, Name: name, Artist: artist, Album: album, Cover: coverURL, Extra: extra}
 		baseFilename := fmt.Sprintf("%s - %s", name, artist)
 		settings := core.GetWebSettings()
 

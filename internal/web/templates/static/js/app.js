@@ -205,7 +205,7 @@ async function fetchWebSettings() {
     }
 }
 
-function buildDownloadRequestURL(id, source, name, artist, cover, extra, options = {}) {
+function buildDownloadRequestURL(id, source, name, artist, album, cover, extra, options = {}) {
     const params = new URLSearchParams({
         id: String(id || ''),
         source: String(source || ''),
@@ -213,6 +213,10 @@ function buildDownloadRequestURL(id, source, name, artist, cover, extra, options
         artist: String(artist || '')
     });
 
+    const albumValue = String(album || '');
+    if (albumValue !== '') {
+        params.set('album', albumValue);
+    }
     const coverValue = String(cover || '');
     if (coverValue !== '') {
         params.set('cover', coverValue);
@@ -234,14 +238,14 @@ function buildDownloadRequestURL(id, source, name, artist, cover, extra, options
     return `${API_ROOT}/download?${params.toString()}`;
 }
 
-function buildStreamURL(id, source, name, artist, cover, extra) {
-    return buildDownloadRequestURL(id, source, name, artist, cover, extra, {
+function buildStreamURL(id, source, name, artist, album, cover, extra) {
+    return buildDownloadRequestURL(id, source, name, artist, album, cover, extra, {
         stream: true
     });
 }
 
-function buildDownloadURL(id, source, name, artist, cover, extra) {
-    return buildDownloadRequestURL(id, source, name, artist, cover, extra, {
+function buildDownloadURL(id, source, name, artist, album, cover, extra) {
+    return buildDownloadRequestURL(id, source, name, artist, album, cover, extra, {
         embed: webSettings.embedDownload,
         saveLocal: webSettings.downloadToLocal
     });
@@ -286,7 +290,7 @@ function updateDownloadButton(link) {
     if (!card) return;
 
     const ds = card.dataset;
-    link.href = buildDownloadURL(ds.id, ds.source, ds.name, ds.artist, ds.cover || '', ds.extra || '');
+    link.href = buildDownloadURL(ds.id, ds.source, ds.name, ds.artist, ds.album || '', ds.cover || '', ds.extra || '');
     link.title = webSettings.downloadToLocal ? '保存到本地目录' : '下载歌曲';
 }
 
@@ -2082,7 +2086,7 @@ function updateCardWithSong(card, song, options = {}) {
 
     const dl = card.querySelector('.btn-download');
     if (dl) {
-        dl.href = buildDownloadURL(song.id, song.source, song.name, song.artist, song.cover || '', card.dataset.extra || '');
+        dl.href = buildDownloadURL(song.id, song.source, song.name, song.artist, song.album || '', song.cover || '', card.dataset.extra || '');
         dl.id = `dl-${song.id}`;
         dl.title = webSettings.downloadToLocal ? '保存到本地目录' : '下载歌曲';
     }
@@ -2140,7 +2144,7 @@ function syncSongToAPlayer(oldId, newSong) {
         audio.artist = newSong.artist;
         audio.album = newSong.album || '';
         audio.cover = newSong.cover;
-        audio.url = buildStreamURL(newSong.id, newSong.source, newSong.name, newSong.artist, newSong.cover || '', newSong.extra ? JSON.stringify(newSong.extra) : '');
+        audio.url = buildStreamURL(newSong.id, newSong.source, newSong.name, newSong.artist, newSong.album || '', newSong.cover || '', newSong.extra ? JSON.stringify(newSong.extra) : '');
         const lyricURLs = lyricURLsForSong(newSong);
         audio.lrc = lyricURLs.line;
         audio.raw_lrc = lyricURLs.auto;
@@ -2223,7 +2227,7 @@ function playAllAndJumpTo(btn) {
             name: ds.name,
             artist: ds.artist,
             album: ds.album || '',
-            url: buildStreamURL(ds.id, ds.source, ds.name, ds.artist, ds.cover || '', ds.extra || ''),
+            url: buildStreamURL(ds.id, ds.source, ds.name, ds.artist, ds.album || '', ds.cover || '', ds.extra || ''),
             cover: coverUrl,
             lrc: lyricURLs.line,
             raw_lrc: lyricURLs.auto,
@@ -2358,7 +2362,7 @@ function getSelectedSongs() {
                 artist: song.artist,
                 duration: song.duration,
                 extra: song.extra,
-                url: buildDownloadURL(song.id, song.source, song.name, song.artist, song.cover || '', song.extra || ''),
+                url: buildDownloadURL(song.id, song.source, song.name, song.artist, song.album || '', song.cover || '', song.extra || ''),
                 cover: song.cover,
                 lrc: lyricURLs.line,
                 raw_lrc: lyricURLs.auto,

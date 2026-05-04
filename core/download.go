@@ -32,6 +32,7 @@ func DownloadSongData(song *model.Song, withCover bool, withLyrics bool) (*Downl
 	normalized := *song
 	normalized.Name = strings.TrimSpace(normalized.Name)
 	normalized.Artist = strings.TrimSpace(normalized.Artist)
+	normalized.Album = strings.TrimSpace(normalized.Album)
 	if normalized.Name == "" {
 		normalized.Name = "Unknown"
 	}
@@ -68,7 +69,7 @@ func DownloadSongData(song *model.Song, withCover bool, withLyrics bool) (*Downl
 
 	finalData := audioData
 	warning := ""
-	if (ext == "mp3" || ext == "flac" || ext == "m4a" || ext == "wma") && (lyric != "" || len(coverData) > 0) {
+	if (ext == "mp3" || ext == "flac" || ext == "m4a" || ext == "wma") && (normalized.Album != "" || lyric != "" || len(coverData) > 0) {
 		embeddedData, embedErr := EmbedSongMetadata(audioData, &normalized, lyric, coverData, coverMime)
 		switch {
 		case embedErr == nil:

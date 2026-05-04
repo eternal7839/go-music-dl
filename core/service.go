@@ -842,7 +842,10 @@ func stripID3v2Prefix(audioData []byte) []byte {
 	if len(audioData) < 10 || string(audioData[:3]) != "ID3" {
 		return audioData
 	}
-	tagSize := int(audioData[6]&0x7F)<<21 | int(audioData[7]&0x7F)<<14 | int(audioData[8]&0x7F)<<7 | int(audioData[9]&0x7F)
+	tagSize, ok := decodeID3SynchsafeSize(audioData[6:10])
+	if !ok {
+		return audioData
+	}
 	total := 10 + tagSize
 	if audioData[5]&0x10 != 0 {
 		total += 10
@@ -851,6 +854,16 @@ func stripID3v2Prefix(audioData []byte) []byte {
 		return audioData
 	}
 	return audioData[total:]
+}
+
+func decodeID3SynchsafeSize(data []byte) (int, bool) {
+	if len(data) < 4 {
+		return 0, false
+	}
+	if data[0]&0x80 != 0 || data[1]&0x80 != 0 || data[2]&0x80 != 0 || data[3]&0x80 != 0 {
+		return 0, false
+	}
+	return int(data[0])<<21 | int(data[1])<<14 | int(data[2])<<7 | int(data[3]), true
 }
 
 func id3SynchsafeSize(size int) [4]byte {
@@ -907,13 +920,86 @@ func id3v23Frame(id string, payload []byte) []byte {
 	return frame
 }
 
-func embedMP3ID3v23Metadata(audioData []byte, title, artist, lyric string, coverData []byte, coverMime string) ([]byte, error) {
+func isID3v23FrameID(id []byte) bool {
+	if len(id) != 4 {
+		return false
+	}
+	for _, c := range id {
+		if (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func preservedID3v23Frames(audioData []byte, replace map[string]bool) []byte {
+	if len(audioData) < 10 || string(audioData[:3]) != "ID3" || audioData[3] != 0x03 {
+		return nil
+	}
+	if audioData[5]&0x40 != 0 {
+		return nil
+	}
+	tagSize, ok := decodeID3SynchsafeSize(audioData[6:10])
+	if !ok {
+		return nil
+	}
+	tagEnd := 10 + tagSize
+	if tagEnd > len(audioData) {
+		return nil
+	}
+
+	tagData := audioData[10:tagEnd]
+	preserved := make([]byte, 0, len(tagData))
+	for pos := 0; pos+10 <= len(tagData); {
+		header := tagData[pos : pos+10]
+		if bytes.Equal(header, make([]byte, 10)) {
+			break
+		}
+		if !isID3v23FrameID(header[:4]) {
+			break
+		}
+		frameSize := int(binary.BigEndian.Uint32(header[4:8]))
+		if frameSize <= 0 || pos+10+frameSize > len(tagData) {
+			break
+		}
+		frameID := string(header[:4])
+		if !replace[frameID] {
+			preserved = append(preserved, tagData[pos:pos+10+frameSize]...)
+		}
+		pos += 10 + frameSize
+	}
+	return preserved
+}
+
+func embedMP3ID3v23Metadata(audioData []byte, title, artist, album, lyric string, coverData []byte, coverMime string) ([]byte, error) {
 	var frames bytes.Buffer
+	replaceFrames := map[string]bool{}
+	if title != "" {
+		replaceFrames["TIT2"] = true
+	}
+	if artist != "" {
+		replaceFrames["TPE1"] = true
+	}
+	if album != "" {
+		replaceFrames["TALB"] = true
+	}
+	if lyric != "" {
+		replaceFrames["USLT"] = true
+	}
+	if len(coverData) > 0 {
+		replaceFrames["APIC"] = true
+	}
+	frames.Write(preservedID3v23Frames(audioData, replaceFrames))
+
 	if title != "" {
 		frames.Write(id3v23Frame("TIT2", id3TextFramePayload(title)))
 	}
 	if artist != "" {
 		frames.Write(id3v23Frame("TPE1", id3TextFramePayload(artist)))
+	}
+	if album != "" {
+		frames.Write(id3v23Frame("TALB", id3TextFramePayload(album)))
 	}
 	if lyric != "" {
 		frames.Write(id3v23Frame("USLT", id3USLTPayload(lyric)))
@@ -1298,29 +1384,54 @@ func EmbedSongMetadata(audioData []byte, song *model.Song, lyric string, coverDa
 
 	title := ""
 	artist := ""
+	album := ""
 	if song != nil {
 		title = strings.TrimSpace(song.Name)
 		artist = strings.TrimSpace(song.Artist)
+		album = strings.TrimSpace(song.Album)
 	}
 	lyric = strings.TrimSpace(lyric)
+	coverMime = normalizeCoverMime(coverMime)
+	incomingCover := len(coverData) > 0
+
+	if existing, err := tag.ReadFrom(bytes.NewReader(audioData)); err == nil {
+		if existingTitle := strings.TrimSpace(existing.Title()); title == "" && existingTitle != "" {
+			title = existingTitle
+		}
+		if existingArtist := strings.TrimSpace(existing.Artist()); artist == "" && existingArtist != "" {
+			artist = existingArtist
+		}
+		if existingAlbum := strings.TrimSpace(existing.Album()); album == "" && existingAlbum != "" {
+			album = existingAlbum
+		}
+		if existingLyric := strings.TrimSpace(existing.Lyrics()); lyric == "" && existingLyric != "" {
+			lyric = existingLyric
+		}
+		if ext == "mp3" && !incomingCover {
+			if picture := existing.Picture(); picture != nil && len(picture.Data) > 0 {
+				coverData = append([]byte(nil), picture.Data...)
+				if picture.MIMEType != "" {
+					coverMime = picture.MIMEType
+				}
+			}
+		}
+	}
 
 	if ext != "mp3" && ext != "flac" && ext != "m4a" && ext != "wma" {
 		return audioData, nil
 	}
-	if title == "" && artist == "" && lyric == "" && len(coverData) == 0 {
+	if title == "" && artist == "" && album == "" && lyric == "" && len(coverData) == 0 {
 		return audioData, nil
 	}
 
-	_, _ = tag.ReadFrom(bytes.NewReader(audioData))
-
 	if ext == "mp3" {
-		return embedMP3ID3v23Metadata(audioData, title, artist, lyric, coverData, normalizeCoverMime(coverMime))
+		return embedMP3ID3v23Metadata(audioData, title, artist, album, lyric, coverData, coverMime)
 	}
 
-	return embedAudioMetadataByFFmpeg(audioData, ext, title, artist, lyric, coverData, normalizeCoverMime(coverMime))
+	return embedAudioMetadataByFFmpeg(audioData, ext, title, artist, album, lyric, coverData, coverMime)
 }
 
-func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, lyric string, coverData []byte, coverMime string) ([]byte, error) {
+func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, album, lyric string, coverData []byte, coverMime string) ([]byte, error) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		return nil, ErrFFmpegNotFound
 	}
@@ -1371,12 +1482,15 @@ func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, lyric stri
 	if hasCover {
 		args = append(args, "-map", "0:a:0", "-map", "1:v:0")
 	} else {
-		args = append(args, "-map", "0:a:0")
+		args = append(args, "-map", "0")
 	}
+	args = append(args, "-map_metadata", "0")
 
-	args = append(args, "-c:a", "copy")
 	if hasCover {
+		args = append(args, "-c:a", "copy")
 		args = append(args, "-c:v", "copy", "-disposition:v:0", "attached_pic", "-metadata:s:v:0", "title=Album cover", "-metadata:s:v:0", "comment=Cover (front)")
+	} else {
+		args = append(args, "-c", "copy")
 	}
 
 	if title != "" {
@@ -1384,6 +1498,9 @@ func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, lyric stri
 	}
 	if artist != "" {
 		args = append(args, "-metadata", "artist="+artist)
+	}
+	if album != "" {
+		args = append(args, "-metadata", "album="+album)
 	}
 	if lyric != "" {
 		args = append(args, "-metadata", "lyrics="+lyric)
