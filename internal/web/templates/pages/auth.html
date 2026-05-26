@@ -18,9 +18,9 @@
         </a>
         <h1>{{.Title}}</h1>
         {{ if eq .Mode "setup" }}
-        <p class="auth-hint">首次使用需要创建本地管理员账号，用来保护 Web 页面、设置和下载接口。</p>
+        <p class="auth-hint">首次打开系统配置需要创建本地管理员账号，用来保护 Cookie 和系统设置。</p>
         {{ else }}
-        <p class="auth-hint">请输入本地管理员账号，继续使用音乐搜索与下载服务。</p>
+        <p class="auth-hint">请输入本地管理员账号，继续管理 Cookie 和系统设置。</p>
         {{ end }}
 
         {{ if .Error }}

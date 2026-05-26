@@ -19,6 +19,7 @@ const DOWNLOAD_DIR_PRESET_VALUES = [
 const DOWNLOAD_DIR_PRESETS = new Set(DOWNLOAD_DIR_PRESET_VALUES);
 const DEFAULT_UPDATE_REPO_URL = 'https://github.com/guohuiyuan/go-music-dl';
 const DEFAULT_GITHUB_PROXY_URL = 'https://edgeone.gh-proxy.com';
+const OPEN_CONFIG_QUERY = 'open_config';
 const GITHUB_PROXY_PRESETS = [
     'https://edgeone.gh-proxy.com',
     'https://hk.gh-proxy.com/',
@@ -292,6 +293,57 @@ async function fetchWebSettings() {
         applyWebSettings(data);
     } catch (_) {
     }
+}
+
+function systemConfigReturnURL() {
+    const url = new URL(window.location.href);
+    url.searchParams.set(OPEN_CONFIG_QUERY, '1');
+    return url.pathname + url.search + url.hash;
+}
+
+function redirectToConfigAuth(setupRequired = false) {
+    const next = encodeURIComponent(systemConfigReturnURL());
+    window.location.href = `${API_ROOT}/${setupRequired ? 'setup' : 'login'}?next=${next}`;
+}
+
+function handleConfigAuthResponse(response, payload = null) {
+    if (response.status !== 401) return false;
+    redirectToConfigAuth(!!(payload && payload.setupRequired));
+    return true;
+}
+
+function setAuthFloatLoggedIn(loggedIn) {
+    const form = document.getElementById('auth-float-form');
+    const icon = document.getElementById('auth-float-icon');
+    if (!form || !icon) return;
+    form.dataset.loggedIn = loggedIn ? '1' : '0';
+    form.title = loggedIn ? '退出登录' : '登录';
+    form.classList.toggle('auth-login', !loggedIn);
+    form.classList.toggle('auth-logout', loggedIn);
+    icon.className = loggedIn ? 'fa-solid fa-arrow-right-from-bracket' : 'fa-solid fa-right-to-bracket';
+}
+
+async function refreshAuthFloat() {
+    try {
+        const response = await fetch(API_ROOT + '/cookies', {
+            method: 'HEAD',
+            headers: { 'Accept': 'application/json' }
+        });
+        setAuthFloatLoggedIn(response.ok);
+    } catch (_) {
+        setAuthFloatLoggedIn(false);
+    }
+}
+
+function bindAuthFloat() {
+    const form = document.getElementById('auth-float-form');
+    if (!form || form.dataset.bound === '1') return;
+    form.dataset.bound = '1';
+    form.addEventListener('submit', function(event) {
+        if (form.dataset.loggedIn === '1') return;
+        event.preventDefault();
+        openSystemConfig();
+    });
 }
 
 function buildDownloadRequestURL(id, source, name, artist, album, cover, extra, options = {}) {
@@ -994,9 +1046,17 @@ function bindPageNavigationEvents() {
 document.addEventListener('DOMContentLoaded', function() {
     loadWebSettingsFromCache();
     applyWebSettings(webSettings);
+    bindAuthFloat();
+    refreshAuthFloat();
     fetchWebSettings().finally(() => maybeAutoCheckUpdate());
     bindPageNavigationEvents();
     initializePageContent(document);
+    if (new URLSearchParams(window.location.search).get(OPEN_CONFIG_QUERY) === '1') {
+        const url = new URL(window.location.href);
+        url.searchParams.delete(OPEN_CONFIG_QUERY);
+        window.history.replaceState(null, '', url.toString());
+        openSystemConfig();
+    }
     return;
     /*
 
@@ -1794,12 +1854,16 @@ function startQRLogin(source) {
     fetch(`${API_ROOT}/qr_login/${encodeURIComponent(source)}`, { method: 'POST' })
         .then(async response => {
             const data = await response.json().catch(() => null);
+            if (handleConfigAuthResponse(response, data)) {
+                return null;
+            }
             if (!response.ok || !data) {
                 throw new Error((data && data.error) || '二维码创建失败');
             }
             return data;
         })
         .then(session => {
+            if (!session) return;
             qrLoginState.key = String(session.key || '');
             qrLoginState.baseKey = qrLoginState.key;
             renderQRLoginSession(session);
@@ -1921,6 +1985,9 @@ function fetchQRLoginCheck(source, key) {
     return fetch(`${API_ROOT}/qr_login/${encodeURIComponent(source)}?key=${encodeURIComponent(key)}`)
         .then(async response => {
             const data = await response.json().catch(() => null);
+            if (handleConfigAuthResponse(response, data)) {
+                return null;
+            }
             if (!response.ok || !data) {
                 throw new Error((data && data.error) || '登录状态检查失败');
             }
@@ -1947,6 +2014,7 @@ function sendSodaSMSCode() {
 
     fetchQRLoginCheck('soda', key)
         .then(result => {
+            if (!result) return;
             const status = String(result.status || '');
             if (status === 'success') {
                 handleQRLoginSuccess(result);
@@ -1995,6 +2063,7 @@ function validateSodaSMSCode() {
 
     fetchQRLoginCheck('soda', key)
         .then(result => {
+            if (!result) return;
             const status = String(result.status || '');
             if (status === 'success') {
                 handleQRLoginSuccess(result);
@@ -2020,6 +2089,7 @@ function pollQRLogin() {
 
     fetchQRLoginCheck(qrLoginState.source, qrLoginState.key)
         .then(result => {
+            if (!result) return;
             const status = String(result.status || '');
             const message = String(result.message || '').trim();
             if (status === 'success') {
@@ -2467,23 +2537,37 @@ async function openLatestUpdatePage(target = 'download') {
     openClientExternalURL(url, popup);
 }
 
-function openCookieModal() {
-    document.getElementById('cookieModal').style.display = 'flex';
-    Promise.all([
-        fetch(API_ROOT + '/cookies').then(r => r.json()),
-        fetch(API_ROOT + '/settings').then(r => r.json())
-    ]).then(([cookies, settings]) => {
+async function openSystemConfig() {
+    const modal = document.getElementById('cookieModal');
+    try {
+        const [cookiesResponse, settingsResponse] = await Promise.all([
+            fetch(API_ROOT + '/cookies', { headers: { 'Accept': 'application/json' } }),
+            fetch(API_ROOT + '/settings')
+        ]);
+        const cookies = await cookiesResponse.json().catch(() => null);
+        const settings = await settingsResponse.json().catch(() => null);
+        if (handleConfigAuthResponse(cookiesResponse, cookies)) return;
+        if (!cookiesResponse.ok || !settingsResponse.ok) {
+            throw new Error('加载系统配置失败');
+        }
         applyWebSettings(settings);
         for (const [k, v] of Object.entries(cookies || {})) {
             const el = document.getElementById(`cookie-${k}`);
             if (el) el.value = v;
         }
-    }).catch(() => {
+        setAuthFloatLoggedIn(true);
+        if (modal) modal.style.display = 'flex';
+    } catch (error) {
         applyWebSettings(webSettings);
-    });
+        showToast('系统配置加载失败', error.message || '请稍后重试', 'error');
+    }
 }
 
-function saveCookies() {
+function openCookieModal() {
+    openSystemConfig();
+}
+
+async function saveCookies() {
     const webPageSizeInput = document.getElementById('setting-web-page-size');
     const cliPageSizeInput = document.getElementById('setting-cli-page-size');
 
@@ -2510,24 +2594,32 @@ function saveCookies() {
         data[input.id.replace('cookie-', '')] = input.value;
     });
 
-    Promise.all([
-        fetch(API_ROOT + '/cookies', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        }),
-        fetch(API_ROOT + '/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(nextSettings)
-        }).then(r => r.ok ? r.json() : Promise.reject())
-    ]).then(([, savedSettings]) => {
+    try {
+        const [cookiesResponse, settingsResponse] = await Promise.all([
+            fetch(API_ROOT + '/cookies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify(data)
+            }),
+            fetch(API_ROOT + '/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify(nextSettings)
+            })
+        ]);
+        const cookiesPayload = await cookiesResponse.json().catch(() => null);
+        const savedSettings = await settingsResponse.json().catch(() => null);
+        if (handleConfigAuthResponse(cookiesResponse, cookiesPayload) || handleConfigAuthResponse(settingsResponse, savedSettings)) return;
+        if (!cookiesResponse.ok || !settingsResponse.ok) {
+            throw new Error('保存失败，请稍后重试');
+        }
         applyWebSettings(savedSettings || nextSettings);
+        setAuthFloatLoggedIn(true);
         alert('保存成功');
         document.getElementById('cookieModal').style.display = 'none';
-    }).catch(() => {
-        alert('保存失败，请稍后重试');
-    });
+    } catch (error) {
+        alert(error.message || '保存失败，请稍后重试');
+    }
 }
 
 window.addEventListener('scroll', () => {

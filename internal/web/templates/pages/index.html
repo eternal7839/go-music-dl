@@ -20,13 +20,12 @@
     <i class="fa-solid fa-arrow-up"></i>
 </div>
 
-<div class="settings-float" onclick="openCookieModal()" title="Cookie 设置">
+<div class="settings-float" onclick="openSystemConfig()" title="系统配置">
     <i class="fa-solid fa-gear"></i>
 </div>
-
-<form class="auth-float" action="{{.Root}}/logout" method="post" title="退出登录">
-    <button type="submit">
-        <i class="fa-solid fa-arrow-right-from-bracket"></i>
+<form id="auth-float-form" class="auth-float auth-login" action="{{.Root}}/logout" method="post" title="登录">
+    <button id="auth-float-button" type="submit">
+        <i id="auth-float-icon" class="fa-solid fa-right-to-bracket"></i>
     </button>
 </form>
 

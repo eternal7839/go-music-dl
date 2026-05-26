@@ -379,7 +379,7 @@ func bindAuthRoutes(api *gin.RouterGroup) {
 			return
 		}
 		setAuthCookie(c, sessionValue)
-		c.Redirect(http.StatusFound, RoutePrefix)
+		c.Redirect(http.StatusFound, safeAuthRedirectTarget(c.PostForm("next")))
 	})
 
 	api.GET("/login", func(c *gin.Context) {
@@ -443,6 +443,6 @@ func bindAuthRoutes(api *gin.RouterGroup) {
 
 	api.POST("/logout", func(c *gin.Context) {
 		clearAuthCookie(c)
-		c.Redirect(http.StatusFound, RoutePrefix+"/login")
+		c.Redirect(http.StatusFound, RoutePrefix)
 	})
 }

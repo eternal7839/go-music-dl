@@ -247,3 +247,46 @@ func TestDesktopModeSkipsWebAuthMiddleware(t *testing.T) {
 		t.Fatalf("body = %q, want desktop", rec.Body.String())
 	}
 }
+
+func TestConfigAuthOnlyProtectsConfigRoutes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	api := router.Group(RoutePrefix)
+	configAPI := api.Group("")
+	configAPI.Use(authRequired(func() (core.WebAuthSettings, error) {
+		return core.WebAuthSettings{Username: core.DefaultWebAuthUsername}, nil
+	}))
+	api.GET("", func(c *gin.Context) {
+		c.String(http.StatusOK, "public")
+	})
+	configAPI.GET("/cookies", func(c *gin.Context) {
+		c.String(http.StatusOK, "config")
+	})
+	configAPI.HEAD("/cookies", func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	publicReq := httptest.NewRequest(http.MethodGet, RoutePrefix, nil)
+	publicReq.Header.Set("Accept", "text/html")
+	publicRec := httptest.NewRecorder()
+	router.ServeHTTP(publicRec, publicReq)
+	if publicRec.Code != http.StatusOK {
+		t.Fatalf("public status = %d, want %d", publicRec.Code, http.StatusOK)
+	}
+
+	configReq := httptest.NewRequest(http.MethodGet, RoutePrefix+"/cookies", nil)
+	configReq.Header.Set("Accept", "application/json")
+	configRec := httptest.NewRecorder()
+	router.ServeHTTP(configRec, configReq)
+	if configRec.Code != http.StatusUnauthorized {
+		t.Fatalf("config status = %d, want %d", configRec.Code, http.StatusUnauthorized)
+	}
+
+	headReq := httptest.NewRequest(http.MethodHead, RoutePrefix+"/cookies", nil)
+	headReq.Header.Set("Accept", "application/json")
+	headRec := httptest.NewRecorder()
+	router.ServeHTTP(headRec, headReq)
+	if headRec.Code != http.StatusUnauthorized {
+		t.Fatalf("config HEAD status = %d, want %d", headRec.Code, http.StatusUnauthorized)
+	}
+}

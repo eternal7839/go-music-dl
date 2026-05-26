@@ -399,7 +399,7 @@ func StartWithOptions(port string, opts StartOptions) {
 	api.GET("/videogen.css", func(c *gin.Context) { c.FileFromFS("templates/static/css/videogen.css", http.FS(templateFS)) })
 	api.GET("/videogen.js", func(c *gin.Context) { c.FileFromFS("templates/static/js/videogen.js", http.FS(templateFS)) })
 	api.GET("/app.js", func(c *gin.Context) { c.FileFromFS("templates/static/js/app.js", http.FS(templateFS)) })
-	bindAuthMiddleware(api, opts)
+	configAPI := bindAuthMiddleware(api, opts)
 	api.Static("/videos", videoDir)
 
 	api.GET("/render", func(c *gin.Context) {
@@ -408,8 +408,9 @@ func StartWithOptions(port string, opts StartOptions) {
 		})
 	})
 
-	api.GET("/cookies", func(c *gin.Context) { c.JSON(200, core.CM.GetAll()) })
-	api.POST("/cookies", func(c *gin.Context) {
+	configAPI.HEAD("/cookies", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	configAPI.GET("/cookies", func(c *gin.Context) { c.JSON(200, core.CM.GetAll()) })
+	configAPI.POST("/cookies", func(c *gin.Context) {
 		var req map[string]string
 		if err := c.ShouldBindJSON(&req); err == nil {
 			core.CM.SetAll(req)
@@ -423,7 +424,7 @@ func StartWithOptions(port string, opts StartOptions) {
 	api.GET("/settings", func(c *gin.Context) {
 		c.JSON(200, core.GetWebSettings())
 	})
-	api.POST("/settings", func(c *gin.Context) {
+	configAPI.POST("/settings", func(c *gin.Context) {
 		var req core.WebSettings
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid settings payload"})
@@ -437,7 +438,7 @@ func StartWithOptions(port string, opts StartOptions) {
 	})
 
 	RegisterMusicRoutes(api)
-	RegisterQRLoginRoutes(api)
+	RegisterQRLoginRoutes(configAPI)
 	RegisterCollectionRoutes(api)
 	RegisterLocalMusicRoutes(api)
 	RegisterVideogenRoutes(api, videoDir)
@@ -464,10 +465,12 @@ func StartWithOptions(port string, opts StartOptions) {
 	}
 }
 
-func bindAuthMiddleware(api *gin.RouterGroup, opts StartOptions) {
-	if opts.DisableAuth {
-		return
-	}
+func bindAuthMiddleware(api *gin.RouterGroup, opts StartOptions) *gin.RouterGroup {
 	bindAuthRoutes(api)
-	api.Use(authRequired(core.GetWebAuthSettings))
+	if opts.DisableAuth {
+		return api
+	}
+	configAPI := api.Group("")
+	configAPI.Use(authRequired(core.GetWebAuthSettings))
+	return configAPI
 }
