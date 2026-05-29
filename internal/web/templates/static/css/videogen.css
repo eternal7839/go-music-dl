@@ -222,6 +222,12 @@
 .vg-line-orig {
     --karaoke-base-color: #ffffff;
     font-weight: 800;
+    color: #ffffff;
+    text-shadow:
+        -1px -1px 0 #10b981, 1px -1px 0 #10b981,
+        -1px  1px 0 #10b981, 1px  1px 0 #10b981,
+         0px -1px 0 #10b981, 0px  1px 0 #10b981,
+        -1px  0px 0 #10b981, 1px  0px 0 #10b981;
 }
 
 .vg-word {
@@ -285,20 +291,30 @@
 }
 
 .vg-line-trans {
-    --karaoke-base-color: rgba(255, 255, 255, 0.8);
+    --karaoke-base-color: #ffffff;
     margin-top: 4px;
-    color: rgba(255, 255, 255, 0.8);
+    color: #ffffff;
     font-size: 0.58em;
     line-height: 1.4;
+    text-shadow:
+        -1px -1px 0 #10b981, 1px -1px 0 #10b981,
+        -1px  1px 0 #10b981, 1px  1px 0 #10b981,
+         0px -1px 0 #10b981, 0px  1px 0 #10b981,
+        -1px  0px 0 #10b981, 1px  0px 0 #10b981;
 }
 
 .vg-line-roma {
-    --karaoke-base-color: rgba(255, 255, 255, 0.6);
+    --karaoke-base-color: #ffffff;
     order: 1;
     margin-top: 2px;
-    color: rgba(255, 255, 255, 0.6);
+    color: #ffffff;
     font-size: 0.46em;
     line-height: 1.35;
+    text-shadow:
+        -1px -1px 0 #10b981, 1px -1px 0 #10b981,
+        -1px  1px 0 #10b981, 1px  1px 0 #10b981,
+         0px -1px 0 #10b981, 0px  1px 0 #10b981,
+        -1px  0px 0 #10b981, 1px  0px 0 #10b981;
 }
 
 .vg-line-trans {

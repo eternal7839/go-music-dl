@@ -353,6 +353,20 @@
                     return startY + (lines.length * lineHeight);
                 };
 
+                const karaokeTextColor = "#ffffff";
+                const karaokeAccentColor = "#10b981";
+                const karaokeStrokeText = (text, x, y, lineHeight, fillColor, strokeColor, alpha) => {
+                    ctx.save();
+                    ctx.globalAlpha = alpha;
+                    ctx.lineJoin = "round";
+                    ctx.lineWidth = Math.max(2, lineHeight * 0.08);
+                    ctx.strokeStyle = strokeColor;
+                    ctx.fillStyle = fillColor;
+                    ctx.strokeText(text, x, y);
+                    ctx.fillText(text, x, y);
+                    ctx.restore();
+                };
+
                 const drawKaraokeWordLine = (words, x, y, lineHeight, nowMs, baseColor, fillColor, alpha) => {
                     ctx.lineJoin = "round"; // 确保边缘绝对圆润无尖刺
                     ctx.lineWidth = Math.max(3, lineHeight * 0.12); // 稍微加粗，还原图1厚实感
@@ -362,7 +376,7 @@
                     let cursorX = x;
                     
                     // 第1层：先画一整句的【底层绿边】
-                    ctx.strokeStyle = "#10b981";
+                    ctx.strokeStyle = karaokeAccentColor;
                     words.forEach((word) => {
                         const text = String(word?.text || '');
                         if (text) { ctx.strokeText(text, cursorX, y); cursorX += ctx.measureText(text).width; }
@@ -370,7 +384,7 @@
 
                     // 第2层：再画一整句的【底层白字】（字压在边上，内部绝对纯净无色块）
                     cursorX = x;
-                    ctx.fillStyle = "#ffffff";
+                    ctx.fillStyle = baseColor;
                     words.forEach((word) => {
                         const text = String(word?.text || '');
                         if (text) { ctx.fillText(text, cursorX, y); cursorX += ctx.measureText(text).width; }
@@ -397,7 +411,7 @@
 
                     // 第3层：在进度裁剪区内画【高亮白边】
                     cursorX = x;
-                    ctx.strokeStyle = "#ffffff";
+                    ctx.strokeStyle = karaokeTextColor;
                     words.forEach((word) => {
                         const text = String(word?.text || '');
                         if (text) { ctx.strokeText(text, cursorX, y); cursorX += ctx.measureText(text).width; }
@@ -405,7 +419,7 @@
 
                     // 第4层：在进度裁剪区内画【高亮绿字】
                     cursorX = x;
-                    ctx.fillStyle = "#10b981";
+                    ctx.fillStyle = fillColor;
                     words.forEach((word) => {
                         const text = String(word?.text || '');
                         if (text) { ctx.fillText(text, cursorX, y); cursorX += ctx.measureText(text).width; }
@@ -483,7 +497,7 @@
                 };
 
                 const drawKaraokeLyrics = (timeMs, lx, baseLy, maxWidth) => {
-                    const karaokeFillColor = "#10b981";
+                    const karaokeFillColor = karaokeAccentColor;
                     const createLineLayout = (line, font, lineHeight, useWordProgress) => {
                         if (!line?.text) {
                             return { useWordProgress: false, wordLines: [], textLines: [], lineHeight, height: 0 };
@@ -520,10 +534,7 @@
                         } else {
                             layout.textLines.forEach((lineText, lineIndex) => {
                                 const y = startY + (lineIndex * layout.lineHeight) + layout.lineHeight / 2;
-                                ctx.fillStyle = baseColor;
-                                ctx.globalAlpha = alpha;
-                                ctx.fillText(lineText, x, y);
-                                ctx.globalAlpha = 1;
+                                karaokeStrokeText(lineText, x, y, layout.lineHeight, baseColor, karaokeAccentColor, alpha);
                             });
                         }
                         return startY + layout.height;
@@ -546,7 +557,7 @@
                         if (!orig) continue;
 
                         const isCurrent = offset === 0;
-                        const blockAlpha = 1;
+                        const blockAlpha = isCurrent ? 1 : 0.72;
                         const origFont = isCurrent ? "bold 40px sans-serif" : "700 28px sans-serif";
                         const origLineHeight = isCurrent ? 52 : 38;
                         const subGap = isCurrent ? 10 : 8;
@@ -605,7 +616,7 @@
                             currentY,
                             block.origFont,
                             timeMs,
-                            block.isCurrent ? "rgba(255,255,255,1)" : "rgba(255,255,255,0.85)",
+                            karaokeTextColor,
                             block.alpha,
                             block.isCurrent
                         );
@@ -618,7 +629,7 @@
                                 currentY,
                                 block.romaFont,
                                 timeMs,
-                                block.isCurrent ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.7)",
+                                karaokeTextColor,
                                 block.alpha,
                                 block.isCurrent
                             );
@@ -632,7 +643,7 @@
                                 currentY,
                                 block.transFont,
                                 timeMs,
-                                block.isCurrent ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.8)",
+                                karaokeTextColor,
                                 block.alpha,
                                 block.isCurrent
                             );
