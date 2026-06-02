@@ -34,6 +34,7 @@ type desktopApp struct {
 	bridgeInstalled       bool
 	callbackRegistered    bool
 	storagePermissionOnce bool
+	bundledFFmpegOnce     bool
 	pendingInitialNav     bool
 	pendingHistoryBack    bool
 	pendingExternalOpenTo *url.URL
@@ -179,6 +180,7 @@ func (a *desktopApp) run() error {
 			a.setPlaybackWakeLock(false)
 			return evt.Err
 		case app.ViewEvent:
+			a.configureBundledFFmpeg(evt)
 			a.requestStoragePermission(evt)
 		case app.FrameEvent:
 			a.handleFrame(evt)

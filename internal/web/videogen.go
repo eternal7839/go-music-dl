@@ -94,7 +94,12 @@ func startRenderEncoder(videoDir, sessionID, audioPath string) (string, string, 
 	outPath := filepath.Join(absVideoDir, outName)
 	output := &bytes.Buffer{}
 
-	cmd := exec.Command("ffmpeg",
+	ffmpegPath, err := core.ResolveFFmpegPath()
+	if err != nil {
+		return "", "", nil, nil, nil, err
+	}
+
+	cmd := exec.Command(ffmpegPath,
 		"-y",
 		"-hide_banner",
 		"-loglevel", "error",

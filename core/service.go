@@ -1649,7 +1649,8 @@ func EmbedSongMetadata(audioData []byte, song *model.Song, lyric string, coverDa
 }
 
 func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, album, lyric string, coverData []byte, coverMime string) ([]byte, error) {
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
+	ffmpegPath, err := ResolveFFmpegPath()
+	if err != nil {
 		return nil, ErrFFmpegNotFound
 	}
 
@@ -1729,7 +1730,7 @@ func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, album, lyr
 
 	args = append(args, outPath)
 
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.Command(ffmpegPath, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("ffmpeg metadata embed failed: %v, output: %s", err, strings.TrimSpace(string(out)))

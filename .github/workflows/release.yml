@@ -477,6 +477,11 @@ jobs:
           call "%SDKMANAGER%" --licenses < NUL
           call "%SDKMANAGER%" "platform-tools" "platforms;android-33" "build-tools;34.0.0" "ndk;27.0.12077973"
 
+      - name: Download Android FFmpeg binaries
+        shell: powershell
+        run: |
+          .\.github\scripts\download_android_ffmpeg.ps1 -OutputRoot .\desktop_app\ffmpeg\android
+
       - name: Decode Android signing keystore
         shell: powershell
         env:
@@ -488,6 +493,7 @@ jobs:
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEYSTORE_FILE: ..\release.keystore
+          MUSIC_DL_BUNDLE_ANDROID_FFMPEG: "1"
         run: |
           package_app.bat
 
@@ -512,6 +518,13 @@ jobs:
             echo ERROR: music-dl_x86_64.apk not found
             exit /b 1
           )
+
+      - name: Verify bundled Android FFmpeg
+        shell: powershell
+        run: |
+          .\.github\scripts\verify_android_ffmpeg_apk.ps1 -ApkPath .\music-dl.apk -Abis armeabi-v7a,arm64-v8a,x86,x86_64
+          .\.github\scripts\verify_android_ffmpeg_apk.ps1 -ApkPath .\music-dl_arm64-v8a.apk -Abis arm64-v8a
+          .\.github\scripts\verify_android_ffmpeg_apk.ps1 -ApkPath .\music-dl_x86_64.apk -Abis x86_64
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4

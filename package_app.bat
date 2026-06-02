@@ -93,6 +93,9 @@ if errorlevel 1 (
 	exit /b 1
 )
 
+set "ANDROID_KEYSTORE_FILE_ABS="
+if defined ANDROID_KEYSTORE_FILE for %%I in ("%ANDROID_KEYSTORE_FILE%") do set "ANDROID_KEYSTORE_FILE_ABS=%%~fI"
+
 echo Building!
 gogio -target android ^
  -buildmode exe ^
@@ -110,9 +113,31 @@ if errorlevel 1 (
 	exit /b 1
 )
 
+cd ..
+if errorlevel 1 (
+	echo ERROR: cannot return to repository root.
+	exit /b 1
+)
+
+if "%MUSIC_DL_BUNDLE_ANDROID_FFMPEG%"=="1" (
+	if not defined ANDROID_KEYSTORE_FILE_ABS (
+		echo ERROR: ANDROID_KEYSTORE_FILE is required to re-sign bundled Android APKs.
+		exit /b 1
+	)
+	if not defined ANDROID_KEYSTORE_PASSWORD (
+		echo ERROR: ANDROID_KEYSTORE_PASSWORD is required to re-sign bundled Android APKs.
+		exit /b 1
+	)
+	powershell -NoProfile -ExecutionPolicy Bypass -File ".github\scripts\inject_android_ffmpeg.ps1" -AssetsRoot "desktop_app\ffmpeg\android" -AndroidHome "%ANDROID_HOME%" -KeystoreFile "%ANDROID_KEYSTORE_FILE_ABS%" -KeystorePassword "%ANDROID_KEYSTORE_PASSWORD%"
+	if errorlevel 1 (
+		echo ERROR: failed to bundle ffmpeg into Android APKs.
+		exit /b 1
+	)
+)
+
 if exist "%ADB_EXE%" (
-	echo Install to device: "%ADB_EXE%" install -r ..\music-dl.apk
+	echo Install to device: "%ADB_EXE%" install -r music-dl.apk
 ) else (
-	echo APK built: ..\music-dl.apk
+	echo APK built: music-dl.apk
 	echo adb not found, please install platform-tools and run adb install manually.
 )

@@ -867,11 +867,12 @@ func probeLocalMusicTrack(track *localMusicTrack) (*localProbeResult, error) {
 	if track == nil || strings.TrimSpace(track.absPath) == "" {
 		return nil, errors.New("empty local music track")
 	}
-	if _, err := exec.LookPath("ffprobe"); err != nil {
+	ffprobePath, err := core.ResolveFFprobePath()
+	if err != nil {
 		return nil, err
 	}
 
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", track.absPath)
+	cmd := exec.Command(ffprobePath, "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", track.absPath)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
