@@ -4127,12 +4127,13 @@ function updateBatchToolbar() {
     const batchDl = document.getElementById('btn-batch-dl');
     const batchDeleteLocal = document.getElementById('btn-batch-delete-local');
     const batchFavLocal = document.getElementById('btn-batch-fav-local');
+    const batchFav = document.getElementById('btn-batch-fav');
     const batchRemoveCollection = document.getElementById('btn-batch-remove-collection');
-    
+
     if(document.getElementById('selected-count')) {
         document.getElementById('selected-count').textContent = count;
     }
-    
+
     const allBoxes = document.querySelectorAll('.song-checkbox');
     if (allBoxes.length > 0 && selectAllCb) {
         selectAllCb.checked = (allBoxes.length === count);
@@ -4147,12 +4148,14 @@ function updateBatchToolbar() {
         if(batchDl) batchDl.disabled = nonLocalCount === 0;
         if(batchDeleteLocal) batchDeleteLocal.disabled = localCount === 0;
         if(batchFavLocal) batchFavLocal.disabled = localCount === 0;
+        if(batchFav) batchFav.disabled = false;
         if(batchRemoveCollection) batchRemoveCollection.disabled = false;
     } else {
         if(batchSwitch) batchSwitch.disabled = true;
         if(batchDl) batchDl.disabled = true;
         if(batchDeleteLocal) batchDeleteLocal.disabled = true;
         if(batchFavLocal) batchFavLocal.disabled = true;
+        if(batchFav) batchFav.disabled = true;
         if(batchRemoveCollection) batchRemoveCollection.disabled = true;
     }
     
@@ -4799,6 +4802,53 @@ function playAllSongs() {
 }
 
 let pendingBatchFavIds = [];
+let pendingBatchFavSongs = [];
+
+function batchAddToCollection() {
+    const songs = getSelectedSongs();
+    if (songs.length === 0) {
+        alert('请先选择歌曲');
+        return;
+    }
+    pendingBatchFavSongs = songs.map(song => ({
+        id: song.id,
+        source: song.source,
+        name: song.name,
+        artist: song.artist,
+        cover: song.cover,
+        duration: song.duration,
+        extra: song.extra
+    })).filter(song => song.id && song.source);
+    pendingBatchFavIds = [];
+    pendingFavSong = null;
+    document.getElementById('addToCollectionModal').style.display = 'flex';
+    refreshAddToCollectionList();
+}
+
+async function submitBatchAddToCollection(colId) {
+    const songs = pendingBatchFavSongs.slice();
+    pendingBatchFavSongs = [];
+    if (!colId || songs.length === 0) return;
+
+    try {
+        const response = await fetch(`${API_ROOT}/collections/${colId}/songs/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ songs })
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload || payload.error) {
+            throw new Error((payload && payload.error) || '批量收藏失败');
+        }
+        document.getElementById('addToCollectionModal').style.display = 'none';
+        let message = `批量收藏完成：新增 ${payload.added || 0}`;
+        if (payload.duplicate) message += `，已存在 ${payload.duplicate}`;
+        if (payload.failed) message += `，失败 ${payload.failed}`;
+        alert(message);
+    } catch (error) {
+        alert(error.message || '批量收藏失败');
+    }
+}
 
 function batchAddLocalMusicToCollection() {
     const songs = getSelectedSongs().filter(song => isLocalMusicSourceValue(song.source));
@@ -4807,6 +4857,7 @@ function batchAddLocalMusicToCollection() {
         return;
     }
     pendingBatchFavIds = songs.map(song => song.id).filter(Boolean);
+    pendingBatchFavSongs = [];
     pendingFavSong = null;
     document.getElementById('addToCollectionModal').style.display = 'flex';
     refreshAddToCollectionList();
@@ -5013,6 +5064,8 @@ function refreshAddToCollectionList() {
                 item.querySelector('.col-clickable-area').onclick = () => {
                     if (pendingBatchFavIds && pendingBatchFavIds.length > 0) {
                         submitBatchAddLocalMusicToCollection(col.id);
+                    } else if (pendingBatchFavSongs && pendingBatchFavSongs.length > 0) {
+                        submitBatchAddToCollection(col.id);
                     } else {
                         addSongToCollection(col.id);
                     }
@@ -5060,7 +5113,9 @@ function openAddToCollectionModal(btn) {
         cover: coverUrl,
         extra: extra
     };
-    
+    pendingBatchFavIds = [];
+    pendingBatchFavSongs = [];
+
     document.getElementById('addToCollectionModal').style.display = 'flex';
     refreshAddToCollectionList();
 }

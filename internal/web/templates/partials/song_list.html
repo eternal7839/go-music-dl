@@ -91,6 +91,10 @@
             <button class="btn-pill btn-pill-warn" id="btn-batch-remove-collection" onclick="batchRemoveFromCollection('{{.ColID}}')" disabled>
                 <i class="fa-solid fa-heart-crack"></i> 批量取消收藏
             </button>
+            {{ else }}
+            <button class="btn-pill btn-pill-fav" id="btn-batch-fav" onclick="batchAddToCollection()" disabled>
+                <i class="fa-regular fa-heart"></i> 批量收藏
+            </button>
             {{ end }}
             <button class="btn-pill btn-pill-switch" id="btn-batch-switch" onclick="batchSwitchSource()" disabled>
                 <i class="fa-solid fa-arrows-rotate"></i> 批量换源

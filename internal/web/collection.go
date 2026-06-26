@@ -831,6 +831,79 @@ func RegisterCollectionRoutes(api *gin.RouterGroup) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
+	colAPI.POST("/:id/songs/batch", func(c *gin.Context) {
+		collection, err := loadCollection(c.Param("id"))
+		if err != nil {
+			c.JSON(404, gin.H{"error": "歌单不存在"})
+			return
+		}
+		if collection.isImported() {
+			c.JSON(400, gin.H{"error": "外部导入歌单/专辑不保存歌曲明细，不能直接加入歌曲"})
+			return
+		}
+
+		var req struct {
+			Songs []struct {
+				SongID   string      `json:"id"`
+				Source   string      `json:"source"`
+				Name     string      `json:"name"`
+				Artist   string      `json:"artist"`
+				Cover    string      `json:"cover"`
+				Duration int         `json:"duration"`
+				Extra    interface{} `json:"extra"`
+			} `json:"songs"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || len(req.Songs) == 0 {
+			c.JSON(400, gin.H{"error": "缺少要收藏的歌曲列表"})
+			return
+		}
+
+		songs := make([]SavedSong, 0, len(req.Songs))
+		failed := 0
+		for _, item := range req.Songs {
+			songID := strings.TrimSpace(item.SongID)
+			source := strings.TrimSpace(item.Source)
+			if songID == "" || source == "" {
+				failed++
+				continue
+			}
+			extraStr := ""
+			if item.Extra != nil {
+				if b, err := json.Marshal(item.Extra); err == nil {
+					extraStr = string(b)
+				}
+			}
+			songs = append(songs, SavedSong{
+				CollectionID: collection.ID,
+				SongID:       songID,
+				Source:       source,
+				Name:         item.Name,
+				Artist:       item.Artist,
+				Cover:        item.Cover,
+				Duration:     item.Duration,
+				Extra:        extraStr,
+			})
+		}
+
+		added := 0
+		if len(songs) > 0 {
+			tx := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&songs)
+			if tx.Error != nil {
+				c.JSON(500, gin.H{"error": "批量收藏失败: " + tx.Error.Error()})
+				return
+			}
+			added = int(tx.RowsAffected)
+		}
+
+		c.JSON(200, gin.H{
+			"status":    "ok",
+			"requested": len(req.Songs),
+			"added":     added,
+			"duplicate": len(songs) - added,
+			"failed":    failed,
+		})
+	})
+
 	colAPI.DELETE("/:id/songs", func(c *gin.Context) {
 		collection, err := loadCollection(c.Param("id"))
 		if err != nil {

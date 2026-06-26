@@ -160,6 +160,62 @@ func TestLocalPlaylistSupportedInRenderIndex(t *testing.T) {
 	}
 }
 
+func TestBatchAddSongsEndpoint(t *testing.T) {
+	initCollectionDBForTest(t)
+
+	col := Collection{Name: "Mix", Kind: collectionKindManual, ContentType: collectionContentPlaylist, Source: "local"}
+	if err := db.Create(&col).Error; err != nil {
+		t.Fatalf("create collection: %v", err)
+	}
+
+	router := newLocalMusicTestRouter()
+
+	payload := map[string]any{
+		"songs": []map[string]any{
+			{"id": "111", "source": "netease", "name": "A"},
+			{"id": "222", "source": "qq", "name": "B"},
+			{"id": "", "source": "qq", "name": "bad"}, // failed: missing id
+		},
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, RoutePrefix+"/collections/"+collectionIDString(col.ID)+"/songs/batch", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("batch add status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Added     int `json:"added"`
+		Duplicate int `json:"duplicate"`
+		Failed    int `json:"failed"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Added != 2 || resp.Failed != 1 {
+		t.Fatalf("resp = %+v, want added=2 failed=1", resp)
+	}
+
+	// Re-adding the two valid songs -> duplicates.
+	payload2 := map[string]any{"songs": []map[string]any{
+		{"id": "111", "source": "netease", "name": "A"},
+		{"id": "222", "source": "qq", "name": "B"},
+	}}
+	body2, _ := json.Marshal(payload2)
+	req = httptest.NewRequest(http.MethodPost, RoutePrefix+"/collections/"+collectionIDString(col.ID)+"/songs/batch", bytes.NewReader(body2))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode 2: %v", err)
+	}
+	if resp.Added != 0 || resp.Duplicate != 2 {
+		t.Fatalf("resp 2 = %+v, want added=0 duplicate=2", resp)
+	}
+}
+
 func TestBatchAddLocalMusicEndpoint(t *testing.T) {
 	initCollectionDBForTest(t)
 
