@@ -1745,10 +1745,11 @@ func (m modelState) View() string {
 		s.WriteString("\n(按 Enter 搜索/解析, Tab 切换搜歌/歌单, w 每日推荐, Ctrl+C 退出)")
 		cookies := cm.GetAll()
 		if len(cookies) > 0 {
-			var loadedSources []string
+			loadedSources := make([]string, 0, len(cookies))
 			for k := range cookies {
 				loadedSources = append(loadedSources, k)
 			}
+			sort.Strings(loadedSources)
 			cookieHint := fmt.Sprintf("\n(已加载 Cookie: %s)", strings.Join(loadedSources, ", "))
 			s.WriteString(lipgloss.NewStyle().Foreground(greenColor).Render(cookieHint))
 		}
@@ -1798,10 +1799,11 @@ func (m modelState) renderInputView() string {
 
 	cookies := cm.GetAll()
 	if len(cookies) > 0 {
-		var loadedSources []string
+		loadedSources := make([]string, 0, len(cookies))
 		for k := range cookies {
 			loadedSources = append(loadedSources, k)
 		}
+		sort.Strings(loadedSources)
 		cookieHint := fmt.Sprintf("\n(已加载 Cookie: %s)", strings.Join(loadedSources, ", "))
 		s.WriteString(lipgloss.NewStyle().Foreground(greenColor).Render(cookieHint))
 	}
