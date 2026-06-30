@@ -40,26 +40,32 @@ func configureBundledFFmpegFromView(view jni.Object) error {
 			return err
 		}
 
+		// Android 10+ (targetSdk >= 29) only permits executing binaries from the
+		// extracted native library dir. ffmpeg/ffprobe ship as lib/<abi>/lib*.so,
+		// which PackageManager extracts to nativeLibraryDir at install time, so
+		// prefer that path.
+		nativeLibraryDir, nativeErr := nativeLibraryDirFromContext(env, activity)
+		if nativeErr == nil {
+			if err := configureBundledFFmpegFromNativeLibraryDir(nativeLibraryDir); err == nil {
+				return nil
+			} else {
+				log.Printf("configure bundled ffmpeg from native library dir: %v", err)
+			}
+		} else {
+			log.Printf("resolve native library dir: %v", nativeErr)
+		}
+
+		// Fallback for APKs built by older scripts that placed the executables
+		// under assets/ffmpeg/<abi>/ (only works on Android < 10).
 		filesDir, err := filesDirFromContext(env, activity)
 		if err != nil {
 			return err
 		}
 		abi := androidABIForRuntime()
-		if abi != "" {
-			if err := extractBundledFFmpegFromAssets(env, activity, filesDir, abi); err == nil {
-				return nil
-			} else {
-				log.Printf("configure bundled ffmpeg from assets: %v", err)
-			}
+		if abi == "" {
+			return fmt.Errorf("unsupported android abi for %s", runtime.GOARCH)
 		}
-
-		// Keep a fallback for APKs built by older scripts that placed the
-		// executables under lib/<abi>/libffmpeg.so.
-		nativeLibraryDir, err := nativeLibraryDirFromContext(env, activity)
-		if err != nil {
-			return err
-		}
-		return configureBundledFFmpegFromNativeLibraryDir(nativeLibraryDir)
+		return extractBundledFFmpegFromAssets(env, activity, filesDir, abi)
 	})
 }
 

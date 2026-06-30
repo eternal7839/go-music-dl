@@ -43,7 +43,7 @@ function Remove-ApkEntries {
         $entries | Where-Object {
             $_ -like "META-INF/*" -or
             $_ -like "assets/ffmpeg/*" -or
-            $_ -match "^lib/[^/]+/lib(ffmpeg|ffprobe)\.so$"
+            $_ -match "^lib/[^/]+/lib(ffmpeg|ffprobe|c\+\+_shared)\.so$"
         }
     )
 
@@ -69,6 +69,17 @@ function Add-ApkAssets {
     $stageRoot = Join-Path $WorkRoot "aapt-assets"
     $relativePaths = New-Object System.Collections.Generic.List[string]
 
+    # Android 10+ (targetSdk >= 29) forbids executing binaries from the app's
+    # private files dir. The only directory the platform marks executable is the
+    # extracted native library dir, so ship ffmpeg/ffprobe as lib/<abi>/lib*.so.
+    # PackageManager extracts these to nativeLibraryDir at install time (the APK
+    # manifest keeps the default android:extractNativeLibs="true").
+    $toolMap = @{
+        "ffmpeg"           = "libffmpeg.so"
+        "ffprobe"          = "libffprobe.so"
+        "libc++_shared.so" = "libc++_shared.so"
+    }
+
     foreach ($abi in $Abis) {
         foreach ($tool in @("ffmpeg", "ffprobe", "libc++_shared.so")) {
             $source = Join-Path $AssetsRootFull (Join-Path $abi $tool)
@@ -76,8 +87,9 @@ function Add-ApkAssets {
                 throw "Missing bundled $tool for $abi at $source"
             }
 
-            $relativePath = "assets/ffmpeg/$abi/$tool"
-            $destination = Join-Path $stageRoot (Join-Path "assets\ffmpeg\$abi" $tool)
+            $libName = $toolMap[$tool]
+            $relativePath = "lib/$abi/$libName"
+            $destination = Join-Path $stageRoot (Join-Path "lib\$abi" $libName)
             New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($destination)) -Force | Out-Null
             Copy-Item -LiteralPath $source -Destination $destination -Force
             $relativePaths.Add($relativePath)

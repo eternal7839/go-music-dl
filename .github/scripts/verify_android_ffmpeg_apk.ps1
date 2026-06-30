@@ -23,12 +23,12 @@ $expandedAbis = @($Abis | ForEach-Object { $_ -split "," } | ForEach-Object { $_
 
 foreach ($abi in $expandedAbis) {
         foreach ($tool in @("ffmpeg", "ffprobe")) {
-            $legacyLibEntryName = "lib/$abi/lib$tool.so"
-            if ($null -ne $zip.GetEntry($legacyLibEntryName)) {
-                throw "$apkFull must not contain $legacyLibEntryName; bundled executables belong under assets/ffmpeg"
+            $assetEntryName = "assets/ffmpeg/$abi/$tool"
+            if ($null -ne $zip.GetEntry($assetEntryName)) {
+                throw "$apkFull must not contain $assetEntryName; bundled executables belong under lib/$abi as native libraries so Android 10+ can execute them"
             }
 
-            $entryName = "assets/ffmpeg/$abi/$tool"
+            $entryName = "lib/$abi/lib$tool.so"
             $entry = $zip.GetEntry($entryName)
             if ($null -eq $entry) {
                 throw "$apkFull is missing $entryName"
@@ -38,7 +38,7 @@ foreach ($abi in $expandedAbis) {
             }
         }
 
-        $libcxxEntryName = "assets/ffmpeg/$abi/libc++_shared.so"
+        $libcxxEntryName = "lib/$abi/libc++_shared.so"
         $libcxxEntry = $zip.GetEntry($libcxxEntryName)
         if ($null -eq $libcxxEntry) {
             throw "$apkFull is missing $libcxxEntryName"
@@ -65,4 +65,4 @@ if ($LASTEXITCODE -ne 0) {
     throw "apksigner verify failed for $apkFull"
 }
 
-Write-Host "Verified bundled ffmpeg, ffprobe, and libc++_shared.so in $apkFull"
+Write-Host "Verified bundled libffmpeg.so, libffprobe.so, and libc++_shared.so under lib/<abi> in $apkFull"
