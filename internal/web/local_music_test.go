@@ -291,6 +291,8 @@ func TestLocalMusicPageRendersSongListWithoutUnsupportedActions(t *testing.T) {
 		`class="btn-circle btn-dl btn-download"`,
 		`id="btn-batch-switch"`,
 		`id="btn-batch-dl"`,
+		`id="btn-reindex"`,
+		`onclick="reindexLocalMusic()"`,
 		`selectInvalidSongs()`,
 		`removeSongFromCollection`,
 	}
@@ -949,6 +951,56 @@ func TestBatchMatchLocalMusicSkipsStaleCandidate(t *testing.T) {
 	}
 }
 
+func TestBatchMatchLocalMusicRequiresMatchingArtistWhenProvided(t *testing.T) {
+	initCollectionDBForTest(t)
+
+	downloadDir := t.TempDir()
+	withLocalMusicDownloadDir(t, downloadDir)
+	filename := "Artist One - Same Title.mp3"
+	if err := os.WriteFile(filepath.Join(downloadDir, filename), []byte("audio"), 0644); err != nil {
+		t.Fatalf("write local audio: %v", err)
+	}
+
+	local := LocalMusicIndex{
+		ID:      encodeLocalMusicID(filename),
+		RelPath: filename,
+		Name:    "Same Title",
+		Artist:  "Artist One",
+		ModTime: time.Now(),
+	}
+	if err := db.Create(&local).Error; err != nil {
+		t.Fatalf("create local index row: %v", err)
+	}
+
+	body, err := json.Marshal([]map[string]string{
+		{"name": "Same Title", "artist": "Artist Two"},
+		{"name": "Same Title", "artist": "Artist One"},
+	})
+	if err != nil {
+		t.Fatalf("marshal batch match request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, RoutePrefix+"/local_music/batch_match", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newLocalMusicTestRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /local_music/batch_match status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	var response struct {
+		Matches []struct {
+			QueryIndex int    `json:"qi"`
+			ID         string `json:"id"`
+		} `json:"matches"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode batch match response: %v", err)
+	}
+	if len(response.Matches) != 1 || response.Matches[0].QueryIndex != 1 || response.Matches[0].ID != local.ID {
+		t.Fatalf("matches = %+v, want only the same-artist query to match %q", response.Matches, local.ID)
+	}
+}
+
 func TestRefreshLocalMusicScanSkipsUnchangedIndexWrite(t *testing.T) {
 	initCollectionDBForTest(t)
 
@@ -1037,5 +1089,92 @@ func TestAppJSInitializesCurrentPlayingIDBeforeBootstrap(t *testing.T) {
 	}
 	if stateIndex > bootstrapIndex {
 		t.Fatal("currentPlayingId must initialize before the page bootstrap")
+	}
+}
+
+func TestLocalMusicEndpointPaginatesIndexedTracks(t *testing.T) {
+	initCollectionDBForTest(t)
+
+	downloadDir := t.TempDir()
+	withLocalMusicDownloadDir(t, downloadDir)
+	for _, name := range []string{"Page One.mp3", "Page Two.mp3", "Page Three.mp3", "Page Four.mp3", "Page Five.mp3"} {
+		if err := os.WriteFile(filepath.Join(downloadDir, name), []byte("audio"), 0644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	if err := syncLocalMusicIndex(); err != nil {
+		t.Fatalf("sync local music index: %v", err)
+	}
+	defer waitForLocalMusicScanRefresh(t)
+
+	router := newLocalMusicTestRouter()
+	assertPage := func(offset, limit, wantTracks int, wantMore bool) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("%s/local_music?offset=%d&limit=%d", RoutePrefix, offset, limit), nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /local_music offset=%d limit=%d status=%d body=%s", offset, limit, rec.Code, rec.Body.String())
+		}
+
+		var response struct {
+			Tracks  []localMusicTrack `json:"tracks"`
+			Total   int               `json:"total"`
+			HasMore bool              `json:"has_more"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode page response: %v", err)
+		}
+		if response.Total != 5 || len(response.Tracks) != wantTracks || response.HasMore != wantMore {
+			t.Fatalf("page offset=%d limit=%d got total=%d tracks=%d has_more=%t, want 5/%d/%t", offset, limit, response.Total, len(response.Tracks), response.HasMore, wantTracks, wantMore)
+		}
+	}
+
+	assertPage(0, 2, 2, true)
+	assertPage(2, 2, 2, true)
+	assertPage(4, 2, 1, false)
+}
+
+func TestLocalMusicClientQueuesPageChangesAndRefreshesAfterDuplicateDeletion(t *testing.T) {
+	content, err := templateFS.ReadFile("templates/static/js/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(content)
+	for _, want := range []string{
+		"let queuedLocalMusicPageLoad = null;",
+		"async function fetchLocalMusicPagePayload(params)",
+		"cache: 'no-store'",
+		"persistWebSettingsCache();",
+		"await refreshLocalMusicPageAfterMutation();",
+		"await checkDuplicateSongs();",
+		"const btn = document.createElement('button');",
+		"btn.className = 'playmode-toggle-btn';",
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("app.js missing %q", want)
+		}
+	}
+	if strings.Contains(js, "async function reindexLocalMusic()") {
+		t.Fatal("manual reindex control should not remain in the client")
+	}
+}
+
+func TestPlayModeButtonSitsAboveFixedPlayerCover(t *testing.T) {
+	content, err := templateFS.ReadFile("templates/static/css/style.css")
+	if err != nil {
+		t.Fatalf("read style.css: %v", err)
+	}
+	css := string(content)
+	for _, want := range []string{
+		".aplayer.aplayer-fixed .playmode-toggle-btn",
+		"top: -34px;",
+		"left: 17px;",
+		"width: 32px;",
+		"height: 28px;",
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("style.css missing %q", want)
+		}
 	}
 }

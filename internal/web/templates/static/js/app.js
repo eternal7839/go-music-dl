@@ -1390,7 +1390,8 @@ function changePageSize(size) {
         if (toolbar) toolbar.dataset.pageSize = String(size);
         // 也更新 webSettings 中的值
         webSettings.webPageSize = parseInt(size, 10);
-        loadLocalMusicPage(1, { updateHistory: true, scroll: true });
+        persistWebSettingsCache();
+        void loadLocalMusicPage(1, { updateHistory: true, scroll: true });
         return;
     }
 
@@ -1556,6 +1557,53 @@ function getLocalMusicPageSize() {
     return Math.min(parsePositiveInt(webSettings.webPageSize, DEFAULT_WEB_PAGE_SIZE), 200);
 }
 
+let queuedLocalMusicPageLoad = null;
+
+function buildLocalMusicPageURL(params) {
+    const apiRoot = String(window.API_ROOT || '').replace(/\/+$/, '');
+    const url = new URL(`${apiRoot}/local_music`, window.location.origin);
+    url.search = params.toString();
+    return url.toString();
+}
+
+function shouldRetryLocalMusicPageRequest(error) {
+    if (!error) return false;
+    const message = String(error.message || '');
+    return error.name === 'TypeError' || /failed to fetch|network/i.test(message);
+}
+
+async function fetchLocalMusicPagePayload(params) {
+    const requestURL = buildLocalMusicPageURL(params);
+    let lastError = null;
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            const response = await fetch(requestURL, {
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin',
+                cache: 'no-store'
+            });
+            const payload = await response.json().catch(() => null);
+            if (!response.ok || !payload || payload.error) {
+                throw new Error((payload && payload.error) || '加载本地音乐失败');
+            }
+            return payload;
+        } catch (error) {
+            lastError = error;
+            if (attempt === 0 && shouldRetryLocalMusicPageRequest(error)) {
+                await new Promise(resolve => setTimeout(resolve, 180));
+                continue;
+            }
+        }
+    }
+
+    if (shouldRetryLocalMusicPageRequest(lastError)) {
+        console.warn('Local music page request failed', lastError);
+        throw new Error('本地音乐列表连接失败，请稍后重试');
+    }
+    throw lastError || new Error('加载本地音乐失败');
+}
+
 function setLocalMusicPageHint(message, isError = false) {
     const hint = document.getElementById('localMusicPageHint');
     if (!hint) return;
@@ -1709,7 +1757,10 @@ function updateLocalMusicPageURL(page, replace = false) {
 async function loadLocalMusicPage(page = 1, options = {}) {
     const list = document.getElementById('localMusicPageList');
     if (!list) return false;
-    if (list.dataset.loading === '1') return false;
+    if (list.dataset.loading === '1') {
+        queuedLocalMusicPageLoad = { page, options: { ...options } };
+        return false;
+    }
 
     const targetPage = Math.max(1, parsePositiveInt(page, 1));
     const pageSize = getLocalMusicPageSize();
@@ -1725,11 +1776,7 @@ async function loadLocalMusicPage(page = 1, options = {}) {
     list.dataset.loading = '1';
     setLocalMusicPageHint('正在加载本地音乐...');
     try {
-        const response = await fetch(`${API_ROOT}/local_music?${params.toString()}`);
-        const payload = await response.json().catch(() => null);
-        if (!response.ok || !payload || payload.error) {
-            throw new Error((payload && payload.error) || '加载本地音乐失败');
-        }
+        const payload = await fetchLocalMusicPagePayload(params);
 
         const total = parsePositiveInt(payload.total, 0);
         const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -1787,6 +1834,13 @@ async function loadLocalMusicPage(page = 1, options = {}) {
         return false;
     } finally {
         list.dataset.loading = '0';
+        const queued = queuedLocalMusicPageLoad;
+        queuedLocalMusicPageLoad = null;
+        if (queued && list.isConnected) {
+            setTimeout(() => {
+                void loadLocalMusicPage(queued.page, queued.options);
+            }, 0);
+        }
     }
 }
 
@@ -1800,19 +1854,6 @@ function initializeLocalMusicPage(root = document) {
     });
 }
 
-// === 本地音乐重复检测（手动触发弹窗）===
-async function reindexLocalMusic() {
-    const btn = document.getElementById('btn-reindex');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 刷新中...'; }
-    try {
-        await fetch(API_ROOT + '/local_music/reindex', { method: 'POST' });
-        // 等 2 秒让后台索引重建
-        await new Promise(r => setTimeout(r, 2000));
-        loadLocalMusicPage(getCurrentLocalMusicPage(), { force: true, scroll: false });
-    } catch (_) {}
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-arrows-rotate"></i> 刷新索引'; }
-}
-
 async function checkDuplicateSongs() {
     // 显示 loading 弹窗
     showDuplicateModal(null, true);
@@ -1824,6 +1865,17 @@ async function checkDuplicateSongs() {
     } catch (_) {
         showDuplicateModal([], false);
     }
+}
+
+async function refreshLocalMusicPageAfterMutation() {
+    if (isLocalMusicPageActive()) {
+        return loadLocalMusicPage(getCurrentLocalMusicPage(), {
+            updateHistory: true,
+            replaceHistory: true,
+            scroll: false
+        });
+    }
+    return refreshCurrentPageContent({ scroll: false });
 }
 
 function showDuplicateModal(groups, loading) {
@@ -1888,10 +1940,22 @@ function showDuplicateModal(groups, loading) {
                 delBtn.textContent = '删除';
                 delBtn.onclick = async () => {
                     if (!confirm(`确定删除 "${s.name}"?`)) return;
+                    const originalHTML = delBtn.innerHTML;
+                    delBtn.disabled = true;
+                    delBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
                     try {
-                        const r = await fetch(`${API_ROOT}/local_music?id=${encodeURIComponent(s.id)}`, { method: 'DELETE' });
-                        if (r.ok) row.remove();
-                    } catch (_) {}
+                        await deleteLocalMusic(s.id);
+                        stopDeletedLocalMusicPlayback(new Set([s.id]));
+                        await refreshLocalMusicPageAfterMutation();
+                        await checkDuplicateSongs();
+                    } catch (error) {
+                        alert(error.message || '删除失败');
+                    } finally {
+                        if (delBtn.isConnected) {
+                            delBtn.innerHTML = originalHTML;
+                            delBtn.disabled = false;
+                        }
+                    }
                 };
 
                 row.appendChild(playBtn);
@@ -3752,40 +3816,20 @@ ap.audio.addEventListener('ended', () => KaraokeLyrics.handlePlayStateChange(fal
 
         if (document.querySelector('.playmode-toggle-btn')) return;
 
-        // 创建明显的模式切换按钮
-        const btn = document.createElement('div');
+        const btn = document.createElement('button');
+        btn.type = 'button';
         btn.className = 'playmode-toggle-btn';
-        btn.title = '点击切换播放模式';
-        btn.style.cssText = [
-            'position:absolute',
-            'right:8px',
-            'top:-34px',
-            'height:28px',
-            'padding:0 10px',
-            'display:flex',
-            'align-items:center',
-            'gap:4px',
-            'background:#10b981',
-            'color:#fff',
-            'border-radius:14px',
-            'font-size:12px',
-            'font-weight:600',
-            'cursor:pointer',
-            'z-index:10001',
-            'box-shadow:0 2px 8px rgba(16,185,129,0.35)',
-            'transition:background 0.2s,transform 0.15s',
-            'user-select:none',
-            'white-space:nowrap',
-        ].join(';');
-
-        btn.addEventListener('mouseenter', () => { btn.style.background = '#059669'; btn.style.transform = 'scale(1.05)'; });
-        btn.addEventListener('mouseleave', () => { btn.style.background = '#10b981'; btn.style.transform = 'scale(1)'; });
 
         function refresh() {
             const m = MODES[modeIndex];
-            const icons = { 'mode-order': '&#8645;', 'mode-random': '&#128256;', 'mode-one': '&#128257;' };
-            btn.innerHTML = `<span>${icons[m.cls]}</span><span>${m.label}</span>`;
-            btn.title = m.label + ' — 点击切换';
+            const icons = {
+                'mode-order': 'fa-list-ol',
+                'mode-random': 'fa-shuffle',
+                'mode-one': 'fa-repeat'
+            };
+            btn.innerHTML = `<i class="fa-solid ${icons[m.cls]}" aria-hidden="true"></i>`;
+            btn.title = m.label;
+            btn.setAttribute('aria-label', m.label);
         }
 
         btn.addEventListener('click', (e) => {
@@ -4782,7 +4826,7 @@ async function deleteLocalMusicFromButton(btn) {
     try {
         await deleteLocalMusic(song.id);
         stopDeletedLocalMusicPlayback(new Set([song.id]));
-        await refreshCurrentPageContent({ scroll: false });
+        await refreshLocalMusicPageAfterMutation();
     } catch (error) {
         alert(error.message || '删除失败');
     } finally {
@@ -4831,7 +4875,7 @@ async function batchDeleteLocalMusic() {
         let message = `批量删除完成，成功 ${success}/${songs.length}`;
         message += buildBatchFailureMessage(failures, '失败');
         alert(message);
-        await refreshCurrentPageContent({ scroll: false });
+        await refreshLocalMusicPageAfterMutation();
     } finally {
         if (batchDelete) {
             batchDelete.innerHTML = originalHTML;

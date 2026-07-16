@@ -1038,6 +1038,39 @@ body.batch-mode .song-card { padding-left: 10px; }
 
 .aplayer.aplayer-fixed { z-index: 10000 !important; }
 
+.aplayer.aplayer-fixed .playmode-toggle-btn {
+    position: absolute;
+    top: -34px;
+    left: 17px;
+    width: 32px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid #059669;
+    border-radius: 6px;
+    background: #10b981;
+    color: #fff;
+    cursor: pointer;
+    z-index: 2;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+    transition: background 0.2s, transform 0.15s;
+}
+
+.aplayer.aplayer-fixed .playmode-toggle-btn:hover,
+.aplayer.aplayer-fixed .playmode-toggle-btn:focus-visible {
+    background: #059669;
+}
+
+.aplayer.aplayer-fixed .playmode-toggle-btn:active {
+    transform: translateY(1px);
+}
+
+.aplayer.aplayer-fixed .playmode-toggle-btn:focus-visible {
+    outline: 2px solid #064e3b;
+    outline-offset: 2px;
+}
+
 body.floating-lyrics-disabled .aplayer.aplayer-fixed .aplayer-lrc,
 body.floating-lyrics-disabled .karaoke-lyrics {
     display: none !important;

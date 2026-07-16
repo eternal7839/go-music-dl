@@ -262,6 +262,12 @@ func findLocalMusicMatch(name string, artist string) (*LocalMusicIndex, string, 
 			cleanupStale()
 			return row, absPath, err
 		}
+		// A title alone is not enough when the search result has an artist.
+		// Keep the fuzzy-title fallback within that same artist to avoid
+		// redirecting one artist's song to a different local recording.
+		row, absPath, err = lookup("name LIKE ? AND artist = ?", "%"+name+"%", artist)
+		cleanupStale()
+		return row, absPath, err
 	}
 	row, absPath, err := lookup("name = ?", name)
 	if err != nil || row != nil {
