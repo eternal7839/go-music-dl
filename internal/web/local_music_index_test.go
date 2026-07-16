@@ -60,6 +60,44 @@ func TestLocalMusicIndexSyncUpsertsAndSweeps(t *testing.T) {
 	}
 }
 
+func TestLoadTracksFromIndexDropsStaleRowsAndCorrectsTotal(t *testing.T) {
+	initCollectionDBForTest(t)
+
+	downloadDir := t.TempDir()
+	withLocalMusicDownloadDir(t, downloadDir)
+
+	keepPath := filepath.Join(downloadDir, "Keep Me.mp3")
+	dropPath := filepath.Join(downloadDir, "Drop Me.mp3")
+	if err := os.WriteFile(keepPath, []byte("keep"), 0644); err != nil {
+		t.Fatalf("write keep: %v", err)
+	}
+	if err := os.WriteFile(dropPath, []byte("drop"), 0644); err != nil {
+		t.Fatalf("write drop: %v", err)
+	}
+	if err := syncLocalMusicIndex(); err != nil {
+		t.Fatalf("sync index: %v", err)
+	}
+	if err := os.Remove(dropPath); err != nil {
+		t.Fatalf("remove drop: %v", err)
+	}
+
+	tracks, total, ok := loadTracksFromIndex(0, 10)
+	if !ok || len(tracks) != 1 || total != 1 {
+		t.Fatalf("loadTracksFromIndex = tracks=%d total=%d ok=%t, want 1/1/true", len(tracks), total, ok)
+	}
+	if tracks[0].ID != encodeLocalMusicID("Keep Me.mp3") {
+		t.Fatalf("remaining track ID = %q, want Keep Me", tracks[0].ID)
+	}
+
+	var count int64
+	if err := db.Model(&LocalMusicIndex{}).Count(&count).Error; err != nil {
+		t.Fatalf("count index rows: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("stale index row was not removed, count = %d", count)
+	}
+}
+
 func TestLocalMusicSearchSongsMatchesAndExcludesDeleted(t *testing.T) {
 	initCollectionDBForTest(t)
 

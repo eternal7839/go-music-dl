@@ -29,9 +29,11 @@ import (
 )
 
 const (
-	localMusicSource       = "local"
-	legacyLocalMusicSource = "local-file"
-	localMusicScanCacheTTL = 10 * time.Second
+	localMusicSource         = "local"
+	legacyLocalMusicSource   = "local-file"
+	localMusicScanCacheTTL   = 10 * time.Second
+	autoCacheMaxRequestBytes = 64 << 10
+	autoCacheMaxConcurrent   = 2
 )
 
 var localMusicDownloadDirProvider = func() string {
@@ -56,6 +58,11 @@ var localMusicScanCacheMu sync.RWMutex
 var localMusicScanCache localMusicScanSnapshot
 var localMusicScanRefreshMu sync.Mutex
 var localMusicScanRefreshInFlight bool
+var autoCacheMu sync.Mutex
+var autoCacheInFlight = make(map[string]struct{})
+var autoCacheSlots = make(chan struct{}, autoCacheMaxConcurrent)
+var autoCacheSaveSong = core.SaveSongToFileWithTemplate
+var autoCacheIndexSavedSong = indexAutoCachedLocalMusic
 
 type localMusicScanSnapshot struct {
 	Dir       string
@@ -95,6 +102,101 @@ type localMusicDupItem struct {
 	Duration int    `json:"duration"`
 	Ext      string `json:"ext"`
 	RelPath  string `json:"rel_path"`
+}
+
+type autoCacheRequest struct {
+	ID     string          `json:"id"`
+	Source string          `json:"source"`
+	Name   string          `json:"name"`
+	Artist string          `json:"artist"`
+	Album  string          `json:"album"`
+	Cover  string          `json:"cover"`
+	Extra  json.RawMessage `json:"extra"`
+}
+
+func decodeAutoCacheRequest(c *gin.Context) (autoCacheRequest, error) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, autoCacheMaxRequestBytes)
+	decoder := json.NewDecoder(c.Request.Body)
+
+	var req autoCacheRequest
+	if err := decoder.Decode(&req); err != nil {
+		return autoCacheRequest{}, err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return autoCacheRequest{}, errors.New("invalid request")
+	}
+	return req, nil
+}
+
+func parseAutoCacheExtra(raw json.RawMessage) map[string]string {
+	extra := make(map[string]string)
+	if len(raw) == 0 || string(raw) == "null" {
+		return extra
+	}
+
+	var encoded string
+	if err := json.Unmarshal(raw, &encoded); err == nil {
+		_ = json.Unmarshal([]byte(encoded), &extra)
+		return extra
+	}
+
+	var values map[string]interface{}
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return extra
+	}
+	for key, value := range values {
+		if text, ok := value.(string); ok {
+			extra[key] = text
+		}
+	}
+	return extra
+}
+
+func reserveAutoCache(key string) string {
+	autoCacheMu.Lock()
+	defer autoCacheMu.Unlock()
+
+	if _, exists := autoCacheInFlight[key]; exists {
+		return "in_progress"
+	}
+	select {
+	case autoCacheSlots <- struct{}{}:
+		autoCacheInFlight[key] = struct{}{}
+		return "started"
+	default:
+		return "busy"
+	}
+}
+
+func releaseAutoCache(key string) {
+	autoCacheMu.Lock()
+	delete(autoCacheInFlight, key)
+	autoCacheMu.Unlock()
+	<-autoCacheSlots
+}
+
+// indexAutoCachedLocalMusic indexes the file that was just written instead of
+// rescanning the entire download directory after every playback cache.
+func indexAutoCachedLocalMusic(result *core.DownloadedSong, downloadDir string) {
+	if result == nil || strings.TrimSpace(result.SavedPath) == "" {
+		return
+	}
+
+	rootDir := strings.TrimSpace(downloadDir)
+	if rootDir == "" {
+		rootDir = localMusicDownloadDir()
+	}
+	rootAbs, err := filepath.Abs(rootDir)
+	if err != nil {
+		return
+	}
+	track, err := buildLocalMusicTrackFast(rootAbs, result.SavedPath)
+	if err != nil {
+		return
+	}
+
+	upsertLocalMusicIndexRow(track)
+	invalidateLocalMusicScanCache()
 }
 
 func extractBitrateFromAudioFile(absPath string) int {
@@ -156,9 +258,9 @@ func RegisterLocalMusicRoutes(api *gin.RouterGroup) {
 		pageTracks := paginateLocalMusicTracks(tracks, offset, limit)
 		markAlreadyAddedLocalTracks(c.Query("collection_id"), pageTracks)
 
-		// 扫描完成后同步到 SQLite 索引（异步）
-		if !refreshing && len(tracks) > 0 {
-			go syncTracksToIndex(tracks)
+		// 扫描完成后同步到 SQLite 索引（异步），空扫描也要清除旧行。
+		if !refreshing {
+			go func() { _ = syncTracksToIndex(tracks) }()
 		}
 
 		c.JSON(http.StatusOK, gin.H{
@@ -265,34 +367,19 @@ func RegisterLocalMusicRoutes(api *gin.RouterGroup) {
 				continue
 			}
 
-			// 先用 name 精确匹配，再模糊匹配
-			var rows []LocalMusicIndex
-			query := db.Where("name = ?", name)
-			if artist != "" {
-				query = query.Where("artist = ?", artist)
-			}
-			if err := query.Limit(1).Find(&rows).Error; err != nil || len(rows) == 0 {
-				// 回退：模糊匹配（name LIKE）
-				if err := db.Where("name LIKE ?", "%"+name+"%").
-					Limit(1).Find(&rows).Error; err != nil || len(rows) == 0 {
-					continue
-				}
-			}
-
-			rootAbs, _ := filepath.Abs(localMusicDownloadDir())
-			absPath := filepath.Join(rootAbs, filepath.FromSlash(rows[0].RelPath))
-			if info, statErr := os.Stat(absPath); statErr != nil || info.IsDir() {
+			row, absPath, err := findLocalMusicMatch(name, artist)
+			if err != nil || row == nil {
 				continue
 			}
 
 			matches = append(matches, matchResult{
 				QueryIndex: i,
-				ID:         rows[0].ID,
-				Name:       rows[0].Name,
-				Artist:     rows[0].Artist,
+				ID:         row.ID,
+				Name:       row.Name,
+				Artist:     row.Artist,
 				Bitrate:    extractBitrateFromAudioFile(absPath),
-				Size:       rows[0].Size,
-				Ext:        rows[0].Ext,
+				Size:       row.Size,
+				Ext:        row.Ext,
 			})
 		}
 
@@ -367,67 +454,57 @@ func RegisterLocalMusicRoutes(api *gin.RouterGroup) {
 
 	// autoCacheLocalMusic 播放时后台下载缓存
 	api.POST("/local_music/auto_cache", func(c *gin.Context) {
-		rawBody, _ := io.ReadAll(c.Request.Body)
-
-		// 使用 map[string]interface{} 兼容 extra 为字符串或对象的情况
-		var raw map[string]interface{}
-		if err := json.Unmarshal(rawBody, &raw); err != nil {
-			fmt.Printf("[auto_cache] FAIL err=%v raw=%s\n", err, string(rawBody))
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		if !allowSameOriginWrite(c) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
 
-		id, _ := raw["id"].(string)
-		src, _ := raw["source"].(string)
-		if id == "" || src == "" {
-			fmt.Printf("[auto_cache] missing id or source: raw=%s\n", string(rawBody))
+		req, err := decodeAutoCacheRequest(c)
+		if err != nil {
+			status := http.StatusBadRequest
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				status = http.StatusRequestEntityTooLarge
+			}
+			c.JSON(status, gin.H{"error": "invalid request"})
+			return
+		}
+
+		id := strings.TrimSpace(req.ID)
+		source := strings.TrimSpace(req.Source)
+		if id == "" || source == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "missing id or source"})
 			return
 		}
-		if isLocalMusicSource(src) {
+		if isLocalMusicSource(source) {
 			c.JSON(http.StatusOK, gin.H{"status": "skipped", "reason": "already local"})
 			return
 		}
 
-		name, _ := raw["name"].(string)
-		artist, _ := raw["artist"].(string)
-		album, _ := raw["album"].(string)
-		cover, _ := raw["cover"].(string)
-
-		// extra 可能是 JSON 字符串或 map
-		extra := make(map[string]string)
-		switch v := raw["extra"].(type) {
-		case string:
-			_ = json.Unmarshal([]byte(v), &extra)
-		case map[string]interface{}:
-			for k, val := range v {
-				if s, ok := val.(string); ok {
-					extra[k] = s
-				}
-			}
+		cacheKey := source + ":" + id
+		if status := reserveAutoCache(cacheKey); status != "started" {
+			c.JSON(http.StatusOK, gin.H{"status": status})
+			return
 		}
-
-		fmt.Printf("[auto_cache] OK id=%q src=%q name=%q\n", id, src, name)
 
 		settings := core.GetWebSettings()
 		song := &model.Song{
 			ID:     id,
-			Source: src,
-			Name:   name,
-			Artist: artist,
-			Album:  album,
-			Cover:  cover,
-			Extra:  extra,
+			Source: source,
+			Name:   strings.TrimSpace(req.Name),
+			Artist: strings.TrimSpace(req.Artist),
+			Album:  strings.TrimSpace(req.Album),
+			Cover:  strings.TrimSpace(req.Cover),
+			Extra:  parseAutoCacheExtra(req.Extra),
 		}
 
-		// 后台异步下载，不阻塞播放
 		go func() {
-			result, err := core.SaveSongToFileWithTemplate(song, settings.DownloadDir, true, true, settings.DownloadFilenameTemplate)
+			defer releaseAutoCache(cacheKey)
+			result, err := autoCacheSaveSong(song, settings.DownloadDir, true, true, settings.DownloadFilenameTemplate)
 			if err != nil || result == nil {
 				return
 			}
-			// 立即把新下载的文件写入 SQLite 索引（下次加载立即可见）
-			syncLocalMusicIndexAsync()
+			autoCacheIndexSavedSong(result, settings.DownloadDir)
 		}()
 
 		c.JSON(http.StatusOK, gin.H{"status": "started"})
@@ -685,14 +762,46 @@ func refreshLocalMusicScanAsync(dir string) {
 		if filepath.Clean(scanDir) != filepath.Clean(dir) {
 			return
 		}
-		storeLocalMusicScanSnapshot(localMusicScanSnapshot{
+		nextSnapshot := localMusicScanSnapshot{
 			Dir:       scanDir,
 			Tracks:    cloneLocalMusicTrackSlice(tracks),
 			Exists:    exists,
 			Err:       err,
 			ScannedAt: time.Now(),
-		})
+		}
+		previousSnapshot, hasPreviousSnapshot := cachedLocalMusicScanSnapshot(scanDir, false)
+		if err == nil && (!hasPreviousSnapshot || !sameLocalMusicScanContents(previousSnapshot, nextSnapshot)) {
+			if syncErr := syncTracksToIndex(tracks); syncErr != nil {
+				return
+			}
+		}
+		storeLocalMusicScanSnapshot(nextSnapshot)
 	}()
+}
+
+func sameLocalMusicScanContents(previous localMusicScanSnapshot, next localMusicScanSnapshot) bool {
+	if previous.Exists != next.Exists || (previous.Err == nil) != (next.Err == nil) {
+		return false
+	}
+	if previous.Err != nil && next.Err != nil && previous.Err.Error() != next.Err.Error() {
+		return false
+	}
+	if len(previous.Tracks) != len(next.Tracks) {
+		return false
+	}
+	for i := range previous.Tracks {
+		before, after := previous.Tracks[i], next.Tracks[i]
+		if before == nil || after == nil {
+			if before != after {
+				return false
+			}
+			continue
+		}
+		if before.ID != after.ID || before.RelPath != after.RelPath || before.Size != after.Size || !before.ModifiedAt.Equal(after.ModifiedAt) {
+			return false
+		}
+	}
+	return true
 }
 
 func cachedLocalMusicScanSnapshot(dir string, freshOnly bool) (localMusicScanSnapshot, bool) {

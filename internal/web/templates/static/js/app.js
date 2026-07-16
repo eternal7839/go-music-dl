@@ -819,24 +819,52 @@ function bindSongCardCovers(root = document) {
 let localMusicMatchCache = {};
 let batchMatchTimer = null;
 let autoCachePending = {};   // 防止重复缓存请求
+// This state is used by the DOM bootstrap below, so initialize it before any
+// page lifecycle callback can access it.
+let currentPlayingId = null;
+window.currentPlayingId = null;
 
 function scheduleAutoCache(audio) {
-    // 跳过本地文件和已发起缓存的
     const src = audio.source || '';
     if (src === 'local' || src === 'local-file') return;
     const key = audio.custom_id || audio.name || '';
-    if (!key || autoCachePending[key]) return;
+    if (!key || autoCachePending[key] || localMusicMatchCache[audio.custom_id]) return;
 
     autoCachePending[key] = true;
-    // 延迟 2 秒后各自独立触发，不受后续切歌影响
-    setTimeout(() => autoCacheTrack(audio), 2000);
+    setTimeout(() => autoCacheTrack(audio, key), 2000);
 }
 
-async function autoCacheTrack(audio) {
+function scheduleAutoCacheMatch(audio, key, attempt = 0) {
+    const delays = [1500, 3500, 6500];
+    const delay = delays[attempt];
+    if (!audio.custom_id || delay === undefined) {
+        delete autoCachePending[key];
+        return;
+    }
+
+    setTimeout(async () => {
+        await batchMatchLocalMusic();
+        if (localMusicMatchCache[audio.custom_id]) {
+            delete autoCachePending[key];
+            return;
+        }
+        scheduleAutoCacheMatch(audio, key, attempt + 1);
+    }, delay);
+}
+
+async function autoCacheTrack(audio, key = audio.custom_id || audio.name || '') {
+    if (!key || localMusicMatchCache[audio.custom_id]) {
+        delete autoCachePending[key];
+        return;
+    }
+
     try {
         const resp = await fetch(API_ROOT + '/local_music/auto_cache', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
             body: JSON.stringify({
                 id: audio.custom_id || '',
                 source: audio.source || '',
@@ -849,22 +877,13 @@ async function autoCacheTrack(audio) {
         });
         if (!resp.ok) return;
         const data = await resp.json();
-        if (data.status === 'started') {
-            // 缓存成功后标记本地匹配
-            const key = audio.custom_id || audio.name || '';
-            if (key && audio.custom_id) {
-                localMusicMatchCache[audio.custom_id] = {
-                    id: audio.custom_id,
-                    qi: -1
-                };
-                // 更新页面上的标签
-                const card = document.querySelector(`.song-card[data-id="${audio.custom_id}"]`);
-                if (card) {
-                    addLocalMatchBadge(card, { id: audio.custom_id, ext: '', size: 0 });
-                }
-            }
+        if (data.status === 'started' || data.status === 'in_progress') {
+            scheduleAutoCacheMatch(audio, key);
+            return;
         }
-    } catch (_) {}
+    } catch (_) {
+    }
+    delete autoCachePending[key];
 }
 
 function scheduleBatchLocalMusicMatch() {
@@ -2938,6 +2957,10 @@ function getCurrentAPlayerAudio() {
     return ap.list.audios[index] || null;
 }
 
+function getPlaybackCardID(audio) {
+    return String(audio?.original_id || audio?.custom_id || '').trim();
+}
+
 function buildMediaSessionTrackKey(audio = getCurrentAPlayerAudio()) {
     if (!audio) return '';
 
@@ -2988,7 +3011,7 @@ function buildMediaSessionCoverURL(audio = getCurrentAPlayerAudio()) {
         });
     }
 
-    const currentId = String(audio?.custom_id || currentPlayingId || '').trim();
+    const currentId = getPlaybackCardID(audio) || String(currentPlayingId || '').trim();
     if (currentId) {
         const card = Array.from(document.querySelectorAll('.song-card')).find(item => item?.dataset?.id === currentId);
         if (card) {
@@ -3690,8 +3713,6 @@ const ap = new APlayer({
 });
 
 window.ap = ap; 
-let currentPlayingId = null;
-window.currentPlayingId = null; 
 
 setupMediaSession();
 ap.audio.addEventListener('timeupdate', () => KaraokeLyrics.update());
@@ -3820,15 +3841,16 @@ setTimeout(() => {
 ap.on('listswitch', (e) => {
     const index = e.index;
     const newAudio = ap.list.audios[index];
-    if (newAudio && newAudio.custom_id) {
-        currentPlayingId = newAudio.custom_id;
+    const playbackCardID = getPlaybackCardID(newAudio);
+    if (playbackCardID) {
+        currentPlayingId = playbackCardID;
         window.currentPlayingId = currentPlayingId;
         highlightCard(currentPlayingId);
         syncAllPlayButtons();
 
         const vgModal = document.getElementById("vg-modal");
         if (vgModal && vgModal.classList.contains("active") && window.VideoGen) {
-            if (!window.VideoGen.data || window.VideoGen.data.id !== currentPlayingId) {
+            if (!window.VideoGen.data || window.VideoGen.data.id !== newAudio.custom_id) {
                 window.VideoGen.open({
                     id: newAudio.custom_id,
                     source: newAudio.source || 'netease',
@@ -3853,8 +3875,9 @@ ap.on('listswitch', (e) => {
 ap.on('play', () => {
     const idx = ap?.list?.index;
     const audio = (typeof idx === 'number') ? ap.list.audios[idx] : null;
-    if (audio && audio.custom_id) {
-        currentPlayingId = audio.custom_id;
+    const playbackCardID = getPlaybackCardID(audio);
+    if (playbackCardID) {
+        currentPlayingId = playbackCardID;
         window.currentPlayingId = currentPlayingId;
         highlightCard(currentPlayingId);
     }
@@ -4223,7 +4246,7 @@ function updateCardWithSong(card, song, options = {}) {
 
 function syncSongToAPlayer(oldId, newSong) {
     if (!ap || !ap.list || !ap.list.audios) return;
-    const index = ap.list.audios.findIndex(a => a.custom_id === oldId);
+    const index = ap.list.audios.findIndex(a => a.custom_id === oldId || a.original_id === oldId);
     if (index !== -1) {
         const audio = ap.list.audios[index];
         audio.name = newSong.name;
@@ -4234,8 +4257,9 @@ function syncSongToAPlayer(oldId, newSong) {
         const lyricURLs = lyricURLsForPlayback(newSong);
         audio.lrc = lyricURLs.line;
         audio.raw_lrc = lyricURLs.auto;
-        audio.custom_id = newSong.id; 
-        audio.source = newSong.source; 
+        audio.custom_id = newSong.id;
+        audio.original_id = newSong.id;
+        audio.source = newSong.source;
         audio.duration = newSong.duration || 0;
         audio.extra = serializeSongExtra(newSong.extra);
         
@@ -4309,33 +4333,47 @@ function playAllAndJumpTo(btn) {
         const ds = card.dataset;
         const song = songFromCard(card);
         if (!song) return;
-        const lyricURLs = lyricURLsForPlayback(song);
         let coverUrl = ds.cover || '';
         const imgEl = card.querySelector('.cover-wrapper img');
         if (imgEl && imgEl.src) coverUrl = imgEl.src;
 
-        // 优先使用本地音乐文件
         const localMatch = localMusicMatchCache[ds.id];
         const useLocal = localMatch && localMatch.id;
-        const streamId = useLocal ? localMatch.id : ds.id;
-        const streamSource = useLocal ? 'local' : ds.source;
-        const streamUrl = useLocal
-            ? buildStreamURL(localMatch.id, 'local', localMatch.name || ds.name, localMatch.artist || ds.artist, ds.album || '', ds.cover || '', ds.extra || '')
-            : buildStreamURL(ds.id, ds.source, ds.name, ds.artist, ds.album || '', ds.cover || '', ds.extra || '');
+        const playbackSong = useLocal ? {
+            id: localMatch.id,
+            source: 'local',
+            name: localMatch.name || song.name,
+            artist: localMatch.artist || song.artist,
+            album: song.album || '',
+            cover: song.cover || '',
+            duration: song.duration || 0,
+            extra: song.extra || ''
+        } : song;
+        const lyricURLs = lyricURLsForPlayback(playbackSong);
+        const streamUrl = buildStreamURL(
+            playbackSong.id,
+            playbackSong.source,
+            playbackSong.name,
+            playbackSong.artist,
+            playbackSong.album || '',
+            playbackSong.cover || '',
+            playbackSong.extra || ''
+        );
 
         playlist.push({
-            name: ds.name,
-            artist: ds.artist,
-            album: ds.album || '',
+            name: playbackSong.name,
+            artist: playbackSong.artist,
+            album: playbackSong.album || '',
             url: streamUrl,
             cover: coverUrl,
             lrc: lyricURLs.line,
             raw_lrc: lyricURLs.auto,
             theme: '#10b981',
-            custom_id: ds.id,
-            source: useLocal ? 'local' : ds.source,
-            duration: parsePositiveInt(ds.duration, 0),
-            extra: ds.extra || ''
+            custom_id: playbackSong.id,
+            original_id: ds.id,
+            source: playbackSong.source,
+            duration: playbackSong.duration || parsePositiveInt(ds.duration, 0),
+            extra: playbackSong.extra || ''
         });
     });
 

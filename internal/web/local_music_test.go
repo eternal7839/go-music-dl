@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/guohuiyuan/go-music-dl/core"
@@ -38,6 +39,48 @@ func newLocalMusicTestRouter() *gin.Engine {
 	RegisterCollectionRoutes(group)
 	RegisterLocalMusicRoutes(group)
 	return r
+}
+
+func newAutoCacheHTTPRequest(body []byte) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "http://music.test"+RoutePrefix+"/local_music/auto_cache", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("Origin", "http://music.test")
+	return req
+}
+
+func waitForAutoCacheIdle(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		autoCacheMu.Lock()
+		idle := len(autoCacheInFlight) == 0
+		autoCacheMu.Unlock()
+		if idle {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for auto-cache worker")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func waitForLocalMusicScanRefresh(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		localMusicScanRefreshMu.Lock()
+		refreshing := localMusicScanRefreshInFlight
+		localMusicScanRefreshMu.Unlock()
+		if !refreshing {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for local music scan refresh")
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 func TestSearchBoxTemplateShowsLocalMusicEntryNextToCollections(t *testing.T) {
@@ -652,3 +695,347 @@ func TestDeleteLocalMusicHardDeletesAndKeepsCollectionEntries(t *testing.T) {
 	}
 }
 
+func TestAutoCacheEndpointRequiresSameOrigin(t *testing.T) {
+	body, err := json.Marshal(map[string]string{"id": "song-1", "source": "qq"})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	req := newAutoCacheHTTPRequest(body)
+	req.Header.Set("Origin", "https://evil.example")
+	rec := httptest.NewRecorder()
+	newLocalMusicTestRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("POST /local_music/auto_cache status = %d, want %d, body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+}
+
+func TestAutoCacheEndpointRejectsOversizedRequest(t *testing.T) {
+	body := []byte(`{"id":"song-1","source":"qq","name":"` + strings.Repeat("x", autoCacheMaxRequestBytes) + `"}`)
+	rec := httptest.NewRecorder()
+	newLocalMusicTestRouter().ServeHTTP(rec, newAutoCacheHTTPRequest(body))
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("POST /local_music/auto_cache status = %d, want %d, body=%s", rec.Code, http.StatusRequestEntityTooLarge, rec.Body.String())
+	}
+}
+
+func TestAutoCacheEndpointStartsDownloadAndIndexesSavedSong(t *testing.T) {
+	originalSave := autoCacheSaveSong
+	originalIndex := autoCacheIndexSavedSong
+	t.Cleanup(func() {
+		waitForAutoCacheIdle(t)
+		autoCacheSaveSong = originalSave
+		autoCacheIndexSavedSong = originalIndex
+	})
+
+	saved := make(chan *model.Song, 1)
+	indexed := make(chan struct{}, 1)
+	autoCacheSaveSong = func(song *model.Song, _ string, _ bool, _ bool, _ string) (*core.DownloadedSong, error) {
+		saved <- song
+		return &core.DownloadedSong{}, nil
+	}
+	autoCacheIndexSavedSong = func(_ *core.DownloadedSong, _ string) { indexed <- struct{}{} }
+
+	body, err := json.Marshal(map[string]interface{}{
+		"id":     "song-1",
+		"source": "qq",
+		"name":   "Song One",
+		"artist": "Artist One",
+		"extra":  map[string]string{"quality": "high"},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	newLocalMusicTestRouter().ServeHTTP(rec, newAutoCacheHTTPRequest(body))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /local_music/auto_cache status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"status":"started"`) {
+		t.Fatalf("auto-cache response = %s, want started", rec.Body.String())
+	}
+
+	select {
+	case song := <-saved:
+		if song.ID != "song-1" || song.Source != "qq" || song.Extra["quality"] != "high" {
+			t.Fatalf("saved song = %+v, want normalized request", song)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for auto-cache download")
+	}
+	select {
+	case <-indexed:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for saved local file indexing")
+	}
+}
+
+func TestAutoCacheEndpointDeduplicatesInFlightRequests(t *testing.T) {
+	originalSave := autoCacheSaveSong
+	originalIndex := autoCacheIndexSavedSong
+	t.Cleanup(func() {
+		waitForAutoCacheIdle(t)
+		autoCacheSaveSong = originalSave
+		autoCacheIndexSavedSong = originalIndex
+	})
+
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	indexed := make(chan struct{}, 1)
+	autoCacheSaveSong = func(_ *model.Song, _ string, _ bool, _ bool, _ string) (*core.DownloadedSong, error) {
+		started <- struct{}{}
+		<-release
+		return &core.DownloadedSong{}, nil
+	}
+	autoCacheIndexSavedSong = func(_ *core.DownloadedSong, _ string) { indexed <- struct{}{} }
+
+	body, err := json.Marshal(map[string]string{"id": "song-1", "source": "qq"})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	router := newLocalMusicTestRouter()
+
+	first := httptest.NewRecorder()
+	router.ServeHTTP(first, newAutoCacheHTTPRequest(body))
+	if !strings.Contains(first.Body.String(), `"status":"started"`) {
+		t.Fatalf("first auto-cache response = %s, want started", first.Body.String())
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first auto-cache worker")
+	}
+
+	second := httptest.NewRecorder()
+	router.ServeHTTP(second, newAutoCacheHTTPRequest(body))
+	if !strings.Contains(second.Body.String(), `"status":"in_progress"`) {
+		t.Fatalf("second auto-cache response = %s, want in_progress", second.Body.String())
+	}
+
+	close(release)
+	select {
+	case <-indexed:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first auto-cache worker to index its saved file")
+	}
+}
+
+func TestReserveAutoCacheLimitsConcurrentDownloads(t *testing.T) {
+	waitForAutoCacheIdle(t)
+	if status := reserveAutoCache("qq:first"); status != "started" {
+		t.Fatalf("first reservation = %q, want started", status)
+	}
+	defer releaseAutoCache("qq:first")
+	if status := reserveAutoCache("qq:second"); status != "started" {
+		t.Fatalf("second reservation = %q, want started", status)
+	}
+	defer releaseAutoCache("qq:second")
+	if status := reserveAutoCache("qq:third"); status != "busy" {
+		t.Fatalf("third reservation = %q, want busy", status)
+	}
+}
+
+func TestAutoCacheClientWaitsForConfirmedLocalMatch(t *testing.T) {
+	content, err := templateFS.ReadFile("templates/static/js/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(content)
+	for _, want := range []string{
+		"'X-Requested-With': 'XMLHttpRequest'",
+		"scheduleAutoCacheMatch(audio, key)",
+		"custom_id: playbackSong.id",
+		"original_id: ds.id",
+		"getPlaybackCardID(newAudio)",
+	} {
+		if !strings.Contains(js, want) {
+			t.Fatalf("app.js missing %q", want)
+		}
+	}
+	if strings.Contains(js, "localMusicMatchCache[audio.custom_id] =") {
+		t.Fatal("auto-cache must not mark an online ID as a local file before matching")
+	}
+}
+
+func TestIndexAutoCachedLocalMusicUpsertsOnlySavedFile(t *testing.T) {
+	initCollectionDBForTest(t)
+
+	downloadDir := t.TempDir()
+	withLocalMusicDownloadDir(t, downloadDir)
+	savedPath := filepath.Join(downloadDir, "Artist", "Cached Song.mp3")
+	if err := os.MkdirAll(filepath.Dir(savedPath), 0755); err != nil {
+		t.Fatalf("create download subdirectory: %v", err)
+	}
+	if err := os.WriteFile(savedPath, []byte("audio"), 0644); err != nil {
+		t.Fatalf("write cached audio: %v", err)
+	}
+
+	indexAutoCachedLocalMusic(&core.DownloadedSong{SavedPath: savedPath}, "")
+
+	var row LocalMusicIndex
+	if err := db.Where("rel_path = ?", "Artist/Cached Song.mp3").First(&row).Error; err != nil {
+		t.Fatalf("load indexed cached song: %v", err)
+	}
+	if row.Name != "Cached Song" {
+		t.Fatalf("indexed name = %q, want Cached Song", row.Name)
+	}
+}
+
+func TestBatchMatchLocalMusicSkipsStaleCandidate(t *testing.T) {
+	initCollectionDBForTest(t)
+
+	downloadDir := t.TempDir()
+	withLocalMusicDownloadDir(t, downloadDir)
+	validPath := filepath.Join(downloadDir, "existing.mp3")
+	if err := os.WriteFile(validPath, []byte("audio"), 0644); err != nil {
+		t.Fatalf("write valid audio: %v", err)
+	}
+
+	now := time.Now()
+	stale := LocalMusicIndex{
+		ID:      encodeLocalMusicID("missing.mp3"),
+		RelPath: "missing.mp3",
+		Name:    "Same Song",
+		Artist:  "Same Artist",
+		ModTime: now.Add(time.Minute),
+	}
+	valid := LocalMusicIndex{
+		ID:      encodeLocalMusicID("existing.mp3"),
+		RelPath: "existing.mp3",
+		Name:    "Same Song",
+		Artist:  "Same Artist",
+		ModTime: now,
+	}
+	if err := db.Create(&stale).Error; err != nil {
+		t.Fatalf("create stale index row: %v", err)
+	}
+	if err := db.Create(&valid).Error; err != nil {
+		t.Fatalf("create valid index row: %v", err)
+	}
+
+	body, err := json.Marshal([]map[string]string{{"name": "Same Song", "artist": "Same Artist"}})
+	if err != nil {
+		t.Fatalf("marshal batch match request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, RoutePrefix+"/local_music/batch_match", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	newLocalMusicTestRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /local_music/batch_match status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	var response struct {
+		Matches []struct {
+			ID string `json:"id"`
+		} `json:"matches"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode batch match response: %v", err)
+	}
+	if len(response.Matches) != 1 || response.Matches[0].ID != valid.ID {
+		t.Fatalf("matches = %+v, want valid local file %q", response.Matches, valid.ID)
+	}
+
+	var staleCount int64
+	if err := db.Model(&LocalMusicIndex{}).Where("id = ?", stale.ID).Count(&staleCount).Error; err != nil {
+		t.Fatalf("count stale index row: %v", err)
+	}
+	if staleCount != 0 {
+		t.Fatal("batch match should remove stale candidate rows")
+	}
+}
+
+func TestRefreshLocalMusicScanSkipsUnchangedIndexWrite(t *testing.T) {
+	initCollectionDBForTest(t)
+
+	downloadDir := t.TempDir()
+	withLocalMusicDownloadDir(t, downloadDir)
+	if err := os.WriteFile(filepath.Join(downloadDir, "Stable.mp3"), []byte("audio"), 0644); err != nil {
+		t.Fatalf("write local audio: %v", err)
+	}
+	tracks, dir, exists, err := scanLocalMusicTracks()
+	if err != nil {
+		t.Fatalf("scan local music: %v", err)
+	}
+	if err := syncTracksToIndex(tracks); err != nil {
+		t.Fatalf("seed local index: %v", err)
+	}
+	storeLocalMusicScanSnapshot(localMusicScanSnapshot{
+		Dir:       dir,
+		Tracks:    cloneLocalMusicTrackSlice(tracks),
+		Exists:    exists,
+		ScannedAt: time.Now(),
+	})
+
+	var before LocalMusicIndex
+	if err := db.Where("rel_path = ?", "Stable.mp3").First(&before).Error; err != nil {
+		t.Fatalf("load seeded index row: %v", err)
+	}
+
+	refreshLocalMusicScanAsync(downloadDir)
+	waitForLocalMusicScanRefresh(t)
+
+	var after LocalMusicIndex
+	if err := db.Where("rel_path = ?", "Stable.mp3").First(&after).Error; err != nil {
+		t.Fatalf("load refreshed index row: %v", err)
+	}
+	if !after.ScannedAt.Equal(before.ScannedAt) {
+		t.Fatalf("unchanged scan rewrote index: scanned_at before=%s after=%s", before.ScannedAt, after.ScannedAt)
+	}
+}
+
+func TestLocalMusicSlowPathClearsIndexAfterDirectoryBecomesEmpty(t *testing.T) {
+	initCollectionDBForTest(t)
+
+	downloadDir := t.TempDir()
+	withLocalMusicDownloadDir(t, downloadDir)
+	if err := db.Create(&LocalMusicIndex{
+		ID:      encodeLocalMusicID("removed.mp3"),
+		RelPath: "removed.mp3",
+		Name:    "Removed",
+	}).Error; err != nil {
+		t.Fatalf("seed stale index row: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, RoutePrefix+"/local_music?force=1", nil)
+	rec := httptest.NewRecorder()
+	newLocalMusicTestRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /local_music?force=1 status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		var count int64
+		if err := db.Model(&LocalMusicIndex{}).Count(&count).Error; err != nil {
+			t.Fatalf("count index rows: %v", err)
+		}
+		if count == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("empty scan did not clear stale index row, count=%d", count)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestAppJSInitializesCurrentPlayingIDBeforeBootstrap(t *testing.T) {
+	content, err := templateFS.ReadFile("templates/static/js/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	js := string(content)
+	stateIndex := strings.Index(js, "let currentPlayingId = null;")
+	bootstrapIndex := strings.Index(js, "document.addEventListener('DOMContentLoaded'")
+	if stateIndex < 0 || bootstrapIndex < 0 {
+		t.Fatalf("app.js missing playback state or DOM bootstrap")
+	}
+	if stateIndex > bootstrapIndex {
+		t.Fatal("currentPlayingId must initialize before the page bootstrap")
+	}
+}
