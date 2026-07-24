@@ -1100,15 +1100,45 @@ func RegisterMusicRoutes(api, configAPI *gin.RouterGroup) {
 
 	// 下载记录 API
 	api.GET("/api/downloads/records", func(c *gin.Context) {
-		records, err := core.GetDownloadRecords()
+		page, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("page", "1")))
+		pageSize, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("page_size", "20")))
+		if page < 1 {
+			page = 1
+		}
+		if pageSize < 1 {
+			pageSize = 20
+		}
+		if pageSize > 100 {
+			pageSize = 100
+		}
+
+		records, total, err := core.GetDownloadRecordPage(page, pageSize)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		totalPages := 1
+		if total > 0 {
+			totalPages = int((total + int64(pageSize) - 1) / int64(pageSize))
+		}
+		if page > totalPages {
+			page = totalPages
+			records, total, err = core.GetDownloadRecordPage(page, pageSize)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		}
 		if records == nil {
 			records = []core.DownloadRecord{}
 		}
-		c.JSON(200, gin.H{"records": records})
+		c.JSON(200, gin.H{
+			"records":     records,
+			"page":        page,
+			"page_size":   pageSize,
+			"total":       total,
+			"total_pages": totalPages,
+		})
 	})
 
 	configAPI.DELETE("/api/downloads/records", func(c *gin.Context) {

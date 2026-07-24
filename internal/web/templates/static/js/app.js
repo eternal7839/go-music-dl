@@ -1203,12 +1203,14 @@ function syncRightToolbar(nextDoc, currentContainer) {
     return;
   }
 
-  // 搜索页之间保持现有工具栏，避免重建认证状态；从详情页返回时再补回。
-  if (!currentToolbar && currentContainer) {
+  // 分页区由服务端按当前结果页生成，Ajax 导航时必须整体替换，避免保留上一页的按钮状态。
+  if (currentToolbar) {
+    currentToolbar.replaceWith(nextToolbar.cloneNode(true));
+  } else if (currentContainer) {
     currentContainer.before(nextToolbar.cloneNode(true));
-    bindAuthFloat();
-    refreshAuthFloat();
   }
+  bindAuthFloat();
+  refreshAuthFloat();
 }
 
 async function navigateTo(url, options = {}) {
@@ -2159,16 +2161,28 @@ function initializeLocalMusicPage(root = document) {
   });
 }
 
-async function checkDuplicateSongs() {
+const DUPLICATE_GROUP_PAGE_SIZE = 10;
+let activeDuplicatePage = 1;
+
+async function checkDuplicateSongs(page = 1) {
   // 显示 loading 弹窗
   showDuplicateModal(null, true);
   try {
-    const resp = await fetch(API_ROOT + "/local_music/duplicates");
+    const params = new URLSearchParams({
+      page: String(Math.max(1, parsePositiveInt(page, 1))),
+      page_size: String(DUPLICATE_GROUP_PAGE_SIZE),
+    });
+    const resp = await fetch(`${API_ROOT}/local_music/duplicates?${params}`);
     if (!resp.ok) throw new Error("API error");
     const data = await resp.json();
-    showDuplicateModal(data.groups || [], false);
+    activeDuplicatePage = Math.max(1, parsePositiveInt(data.page, 1));
+    showDuplicateModal(data.groups || [], false, {
+      page: activeDuplicatePage,
+      total: Math.max(0, parsePositiveInt(data.total, 0)),
+      totalPages: Math.max(1, parsePositiveInt(data.total_pages, 1)),
+    });
   } catch (_) {
-    showDuplicateModal([], false);
+    showDuplicateModal([], false, { page: 1, total: 0, totalPages: 1 });
   }
 }
 
@@ -2183,7 +2197,7 @@ async function refreshLocalMusicPageAfterMutation() {
   return refreshCurrentPageContent({ scroll: false });
 }
 
-function showDuplicateModal(groups, loading) {
+function showDuplicateModal(groups, loading, pagination = {}) {
   const old = document.getElementById("duplicate-modal-overlay");
   if (old) old.remove();
 
@@ -2216,7 +2230,8 @@ function showDuplicateModal(groups, loading) {
     groups.forEach((g, gi) => {
       const gp = document.createElement("div");
       gp.className = "duplicate-group";
-      gp.innerHTML = `<div class="duplicate-group-title">${gi + 1}. ${escapeHTML(g.name)} · ${escapeHTML(g.artist)}</div>`;
+      const firstNumber = ((pagination.page || 1) - 1) * DUPLICATE_GROUP_PAGE_SIZE + gi + 1;
+      gp.innerHTML = `<div class="duplicate-group-title">${firstNumber}. ${escapeHTML(g.name)} · ${escapeHTML(g.artist)}</div>`;
 
       g.songs.forEach((s) => {
         const sizeStr = s.size ? (s.size / 1048576).toFixed(1) + "MB" : "?";
@@ -2265,7 +2280,7 @@ function showDuplicateModal(groups, loading) {
             await deleteLocalMusic(s.id);
             stopDeletedLocalMusicPlayback(new Set([s.id]));
             await refreshLocalMusicPageAfterMutation();
-            await checkDuplicateSongs();
+            await checkDuplicateSongs(activeDuplicatePage);
           } catch (error) {
             alert(error.message || "删除失败");
           } finally {
@@ -2282,6 +2297,14 @@ function showDuplicateModal(groups, loading) {
       });
       body.appendChild(gp);
     });
+    body.insertAdjacentHTML(
+      "beforeend",
+      renderUtilityModalPagination(
+        pagination.page || 1,
+        pagination.totalPages || 1,
+        "checkDuplicateSongs",
+      ),
+    );
   }
 
   modal.appendChild(body);
@@ -3228,27 +3251,51 @@ function closeUpdateModal() {
 // 下载记录
 // ==========================================
 
+const DOWNLOAD_RECORDS_PAGE_SIZE = 20;
+let activeDownloadRecordsPage = 1;
+
+function renderUtilityModalPagination(page, totalPages, onPageChange) {
+  if (totalPages <= 1) return "";
+  return `<button type="button" class="utility-modal-page-button" onclick="${onPageChange}(${page - 1})" ${page <= 1 ? "disabled" : ""} aria-label="上一页"><i class="fa-solid fa-chevron-left"></i></button>
+    <span class="utility-modal-page-status">第 ${page} / ${totalPages} 页</span>
+    <button type="button" class="utility-modal-page-button" onclick="${onPageChange}(${page + 1})" ${page >= totalPages ? "disabled" : ""} aria-label="下一页"><i class="fa-solid fa-chevron-right"></i></button>`;
+}
+
 async function openDownloadRecordsModal() {
   const modal = document.getElementById("downloadRecordsModal");
   if (!modal) return;
   modal.style.display = "flex";
 
+  await loadDownloadRecordsPage(1);
+}
+
+async function loadDownloadRecordsPage(page = 1) {
   const countEl = document.getElementById("download-records-count");
   const listEl = document.getElementById("download-records-list");
+  const paginationEl = document.getElementById("download-records-pagination");
   if (countEl) countEl.textContent = "加载中...";
   if (listEl) listEl.innerHTML = "";
+  if (paginationEl) paginationEl.innerHTML = "";
+
+  const params = new URLSearchParams({
+    page: String(Math.max(1, parsePositiveInt(page, 1))),
+    page_size: String(DOWNLOAD_RECORDS_PAGE_SIZE),
+  });
 
   try {
-    const resp = await fetch(`${API_ROOT}/api/downloads/records`);
+    const resp = await fetch(`${API_ROOT}/api/downloads/records?${params}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     const records = data.records || [];
+    activeDownloadRecordsPage = Math.max(1, parsePositiveInt(data.page, 1));
+    const total = Math.max(0, parsePositiveInt(data.total, 0));
+    const totalPages = Math.max(1, parsePositiveInt(data.total_pages, 1));
 
     if (countEl) {
       const success = records.filter(r => r.Status === "success").length;
       const skipped = records.filter(r => r.Status === "skipped").length;
       const failed = records.filter(r => r.Status === "failed").length;
-      countEl.textContent = `共 ${records.length} 条  ·  成功 ${success}  ·  跳过 ${skipped}  ·  失败 ${failed}`;
+      countEl.textContent = `共 ${total} 条  ·  本页成功 ${success}  ·  跳过 ${skipped}  ·  失败 ${failed}`;
     }
 
     if (records.length === 0) {
@@ -3284,6 +3331,13 @@ async function openDownloadRecordsModal() {
 
     html += "</tbody></table>";
     if (listEl) listEl.innerHTML = html;
+    if (paginationEl) {
+      paginationEl.innerHTML = renderUtilityModalPagination(
+        activeDownloadRecordsPage,
+        totalPages,
+        "loadDownloadRecordsPage",
+      );
+    }
   } catch (err) {
     if (countEl) countEl.textContent = "加载失败";
     if (listEl) listEl.innerHTML = `<div class="download-records-error">加载失败: ${escapeHtml(err.message)}</div>`;
@@ -3303,8 +3357,11 @@ async function clearDownloadRecords() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const countEl = document.getElementById("download-records-count");
     const listEl = document.getElementById("download-records-list");
+    const paginationEl = document.getElementById("download-records-pagination");
     if (countEl) countEl.textContent = "已清空";
     if (listEl) listEl.innerHTML = '<div class="download-records-empty"><div><i class="fa-regular fa-clock"></i><br>暂无下载记录</div></div>';
+    if (paginationEl) paginationEl.innerHTML = "";
+    activeDownloadRecordsPage = 1;
   } catch (err) {
     alert("清空失败: " + err.message);
   }
@@ -3312,7 +3369,9 @@ async function clearDownloadRecords() {
 
 const PLAYBACK_HISTORY_STORAGE_KEY = "musicdl:playback-history";
 const PLAYBACK_HISTORY_LIMIT = 100;
+const PLAYBACK_HISTORY_PAGE_SIZE = 10;
 let activePlaybackHistoryEntries = [];
+let activePlaybackHistoryPage = 1;
 let lastPlaybackHistoryKey = "";
 let lastPlaybackHistoryAt = 0;
 
@@ -3381,24 +3440,37 @@ function formatPlaybackHistoryTime(value) {
   return date.toLocaleString();
 }
 
-function renderPlaybackHistory() {
+function renderPlaybackHistory(page = activePlaybackHistoryPage) {
   const countEl = document.getElementById("playback-history-count");
   const listEl = document.getElementById("playback-history-list");
+  const paginationEl = document.getElementById("playback-history-pagination");
   if (!listEl) return;
 
   activePlaybackHistoryEntries = readPlaybackHistory();
+  const total = activePlaybackHistoryEntries.length;
+  const totalPages = Math.max(1, Math.ceil(total / PLAYBACK_HISTORY_PAGE_SIZE));
+  activePlaybackHistoryPage = Math.min(
+    Math.max(1, parsePositiveInt(page, 1)),
+    totalPages,
+  );
   if (countEl) {
-    countEl.textContent = activePlaybackHistoryEntries.length
-      ? `最近播放 ${activePlaybackHistoryEntries.length} 首`
+    countEl.textContent = total
+      ? `最近播放 ${total} 首`
       : "暂无播放记录";
   }
 
-  if (activePlaybackHistoryEntries.length === 0) {
+  if (total === 0) {
     listEl.innerHTML = '<div class="utility-empty-state"><div><i class="fa-regular fa-clock"></i><br>开始播放歌曲后，记录会显示在这里</div></div>';
+    if (paginationEl) paginationEl.innerHTML = "";
     return;
   }
 
-  listEl.innerHTML = activePlaybackHistoryEntries
+  const offset = (activePlaybackHistoryPage - 1) * PLAYBACK_HISTORY_PAGE_SIZE;
+  const currentEntries = activePlaybackHistoryEntries.slice(
+    offset,
+    offset + PLAYBACK_HISTORY_PAGE_SIZE,
+  );
+  listEl.innerHTML = currentEntries
     .map((entry, index) => {
       const cover = entry.cover
         ? `<img src="${escapeHTML(entry.cover)}" alt="">`
@@ -3411,16 +3483,23 @@ function renderPlaybackHistory() {
           <div class="playback-history-meta">${artist}</div>
           <div class="playback-history-time">${escapeHTML(formatPlaybackHistoryTime(entry.playedAt))}</div>
         </div>
-        <button type="button" class="playback-history-play" onclick="playPlaybackHistoryItem(${index})"><i class="fa-solid fa-play"></i> 播放</button>
+        <button type="button" class="playback-history-play" onclick="playPlaybackHistoryItem(${offset + index})"><i class="fa-solid fa-play"></i> 播放</button>
       </div>`;
     })
     .join("");
+  if (paginationEl) {
+    paginationEl.innerHTML = renderUtilityModalPagination(
+      activePlaybackHistoryPage,
+      totalPages,
+      "renderPlaybackHistory",
+    );
+  }
 }
 
 function openPlaybackHistoryModal() {
   const modal = document.getElementById("playbackHistoryModal");
   if (!modal) return;
-  renderPlaybackHistory();
+  renderPlaybackHistory(1);
   modal.style.display = "flex";
 }
 
@@ -3435,7 +3514,8 @@ function clearPlaybackHistory() {
     localStorage.removeItem(PLAYBACK_HISTORY_STORAGE_KEY);
   } catch (_) {}
   activePlaybackHistoryEntries = [];
-  renderPlaybackHistory();
+  activePlaybackHistoryPage = 1;
+  renderPlaybackHistory(1);
 }
 
 function playPlaybackHistoryItem(index) {

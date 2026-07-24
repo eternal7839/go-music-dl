@@ -936,6 +936,67 @@ func TestAutoCacheClientWaitsForConfirmedLocalMatch(t *testing.T) {
 	}
 }
 
+func TestLocalMusicDuplicateEndpointPaginatesGroups(t *testing.T) {
+	initCollectionDBForTest(t)
+
+	downloadDir := t.TempDir()
+	withLocalMusicDownloadDir(t, downloadDir)
+	for _, group := range []struct {
+		name   string
+		artist string
+		prefix string
+	}{
+		{name: "A Song", artist: "Artist", prefix: "a"},
+		{name: "B Song", artist: "Artist", prefix: "b"},
+	} {
+		for index := 1; index <= 2; index++ {
+			relPath := fmt.Sprintf("%s-%d.mp3", group.prefix, index)
+			path := filepath.Join(downloadDir, relPath)
+			if err := os.WriteFile(path, []byte("audio"), 0644); err != nil {
+				t.Fatalf("write %s: %v", relPath, err)
+			}
+			row := LocalMusicIndex{
+				ID:      encodeLocalMusicID(relPath),
+				RelPath: relPath,
+				Name:    group.name,
+				Artist:  group.artist,
+				Size:    int64(index),
+				Ext:     ".mp3",
+				ModTime: time.Now(),
+			}
+			if err := db.Create(&row).Error; err != nil {
+				t.Fatalf("create %s: %v", relPath, err)
+			}
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, RoutePrefix+"/local_music/duplicates?page=2&page_size=1", nil)
+	rec := httptest.NewRecorder()
+	newLocalMusicTestRouter().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /local_music/duplicates status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	var response struct {
+		Groups []struct {
+			Name string `json:"name"`
+		} `json:"groups"`
+		Page       int   `json:"page"`
+		PageSize   int   `json:"page_size"`
+		Total      int64 `json:"total"`
+		TotalPages int   `json:"total_pages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode duplicate response: %v", err)
+	}
+	if response.Page != 2 || response.PageSize != 1 || response.Total != 2 || response.TotalPages != 2 {
+		t.Fatalf("pagination = %+v, want page=2 page_size=1 total=2 total_pages=2", response)
+	}
+	if len(response.Groups) != 1 || response.Groups[0].Name != "B Song" {
+		t.Fatalf("page 2 groups = %+v, want B Song", response.Groups)
+	}
+}
+
 func TestIndexAutoCachedLocalMusicUpsertsOnlySavedFile(t *testing.T) {
 	initCollectionDBForTest(t)
 
@@ -1221,7 +1282,7 @@ func TestLocalMusicClientQueuesPageChangesAndRefreshesAfterDuplicateDeletion(t *
 		`cache: "no-store"`,
 		"persistWebSettingsCache();",
 		"await refreshLocalMusicPageAfterMutation();",
-		"await checkDuplicateSongs();",
+		"await checkDuplicateSongs(activeDuplicatePage);",
 		`const btn = document.createElement("button");`,
 		`btn.className = "playmode-toggle-btn";`,
 	} {

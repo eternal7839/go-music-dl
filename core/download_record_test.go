@@ -45,3 +45,27 @@ func TestDownloadDedupIndexUsesSQLiteAndSurvivesHistoryClear(t *testing.T) {
 		t.Fatal("clearing visible history must not clear the SQLite de-duplication index")
 	}
 }
+
+func TestGetDownloadRecordPageReturnsStablePagesAndTotal(t *testing.T) {
+	baseDir := t.TempDir()
+	t.Setenv("MUSIC_DL_CONFIG_DB", filepath.Join(baseDir, "settings.db"))
+	resetConfigStateForTest()
+	t.Cleanup(resetConfigStateForTest)
+
+	for _, name := range []string{"First", "Second", "Third"} {
+		if err := SaveDownloadRecord(name, "Artist", "qq", DownloadStatusSuccess, ""); err != nil {
+			t.Fatalf("SaveDownloadRecord(%q): %v", name, err)
+		}
+	}
+
+	records, total, err := GetDownloadRecordPage(2, 1)
+	if err != nil {
+		t.Fatalf("GetDownloadRecordPage: %v", err)
+	}
+	if total != 3 {
+		t.Fatalf("total = %d, want 3", total)
+	}
+	if len(records) != 1 || records[0].Name != "Second" {
+		t.Fatalf("page 2 = %#v, want Second", records)
+	}
+}

@@ -393,8 +393,19 @@ func RegisterLocalMusicRoutes(api *gin.RouterGroup) {
 
 	// getLocalMusicDuplicates 检测疑似重复的本地歌曲
 	api.GET("/local_music/duplicates", func(c *gin.Context) {
+		page := parseLocalMusicRangeInt(c.Query("page"), 1)
+		pageSize := parseLocalMusicRangeInt(c.Query("page_size"), 10)
+		if page < 1 {
+			page = 1
+		}
+		if pageSize < 1 {
+			pageSize = 10
+		}
+		if pageSize > 50 {
+			pageSize = 50
+		}
 		if db == nil {
-			c.JSON(http.StatusOK, gin.H{"groups": []interface{}{}})
+			c.JSON(http.StatusOK, gin.H{"groups": []interface{}{}, "page": page, "page_size": pageSize, "total": 0, "total_pages": 1})
 			return
 		}
 
@@ -413,13 +424,31 @@ func RegisterLocalMusicRoutes(api *gin.RouterGroup) {
 			AudioCnt int
 		}
 
+		duplicateGroups := db.Model(&LocalMusicIndex{}).
+			Select("name, artist").
+			Group("name, artist").
+			Having("COUNT(*) > 1")
+		var total int64
+		if err := db.Table("(?) AS duplicate_groups", duplicateGroups).Count(&total).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		totalPages := 1
+		if total > 0 {
+			totalPages = int((total + int64(pageSize) - 1) / int64(pageSize))
+		}
+		if page > totalPages {
+			page = totalPages
+		}
+
 		var rows []dupRow
 		if err := db.Model(&LocalMusicIndex{}).
 			Select("name, artist, COUNT(*) as count, MAX(size) as max_size, MAX(CAST(duration AS INTEGER)) as max_br, COUNT(*) as audio_cnt").
 			Group("name, artist").
 			Having("COUNT(*) > 1").
-			Order("count DESC").
-			Limit(200).
+			Order("count DESC, name ASC, artist ASC").
+			Offset((page - 1) * pageSize).
+			Limit(pageSize).
 			Find(&rows).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -454,7 +483,13 @@ func RegisterLocalMusicRoutes(api *gin.RouterGroup) {
 			}
 		}
 
-		c.JSON(http.StatusOK, gin.H{"groups": groups})
+		c.JSON(http.StatusOK, gin.H{
+			"groups":      groups,
+			"page":        page,
+			"page_size":   pageSize,
+			"total":       total,
+			"total_pages": totalPages,
+		})
 	})
 
 	// autoCacheLocalMusic 播放时后台下载缓存

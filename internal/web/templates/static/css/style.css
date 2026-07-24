@@ -1010,6 +1010,11 @@ body.batch-mode .song-card { padding-left: 10px; }
 .utility-modal-actions, .download-records-actions { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .utility-modal-actions .btn-pill, .download-records-actions .btn-pill { min-height: 30px; padding: 5px 10px; font-size: 12px; }
 .utility-modal-list, .download-records-list { max-height: min(420px, 52vh); overflow: auto; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+.utility-modal-pagination { min-height: 32px; display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 12px; }
+.utility-modal-page-button { width: 30px; height: 30px; border: 1px solid #cce7da; border-radius: 9px; background: #f0fdf4; color: #047857; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease; }
+.utility-modal-page-button:hover:not(:disabled) { border-color: #34d399; background: #d1fae5; }
+.utility-modal-page-button:disabled { border-color: #e2e8f0; background: #f8fafc; color: #cbd5e1; cursor: default; }
+.utility-modal-page-status { min-width: 76px; color: #64748b; font-size: 12px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
 .utility-modal-footer, .download-records-footer { display: flex; justify-content: flex-end; margin-top: 12px; }
 .download-records-modal { max-width: 760px; }
 .download-records-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
@@ -1650,6 +1655,7 @@ body.karaoke-lyrics-active .aplayer .aplayer-lrc p.aplayer-lrc-current {
     .utility-modal-actions, .download-records-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
     .utility-modal-actions .btn-pill, .download-records-actions .btn-pill { justify-content: center; }
     .utility-modal-list, .download-records-list { max-height: min(390px, 48vh); }
+    .utility-modal-pagination { margin-top: 10px; }
     .download-records-table th, .download-records-table td { padding: 9px 8px; }
     .download-records-table th:nth-child(2), .download-records-table td:nth-child(2), .download-records-table th:nth-child(3), .download-records-table td:nth-child(3) { display: none; }
     .download-record-name { max-width: 130px; }

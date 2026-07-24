@@ -97,6 +97,40 @@ func TestRemotePlaylistDetailKeepsGlobalRightToolbar(t *testing.T) {
 	}
 }
 
+func TestRightToolbarPaginationMatchesRenderedPageCount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	router.SetHTMLTemplate(newTestTemplate(t))
+	router.GET(RoutePrefix, func(c *gin.Context) {
+		songs := []model.Song{{ID: "song-1", Name: "One", Artist: "Artist", Source: "qq"}}
+		if c.Query("many") == "1" {
+			songs = append(songs, model.Song{ID: "song-2", Name: "Two", Artist: "Artist", Source: "qq"})
+		}
+		renderIndex(c, songs, nil, "", []string{"qq"}, "", "song", "", "", "", false, "", nil)
+	})
+
+	singleReq := httptest.NewRequest("GET", RoutePrefix+"?page_size=1", nil)
+	singleRec := httptest.NewRecorder()
+	router.ServeHTTP(singleRec, singleReq)
+	if singleRec.Code != 200 {
+		t.Fatalf("single page status = %d, want 200", singleRec.Code)
+	}
+	if strings.Contains(singleRec.Body.String(), `id="float-page-num"`) {
+		t.Fatalf("single-page result should not render right pagination: %s", singleRec.Body.String())
+	}
+
+	manyReq := httptest.NewRequest("GET", RoutePrefix+"?many=1&page_size=1", nil)
+	manyRec := httptest.NewRecorder()
+	router.ServeHTTP(manyRec, manyReq)
+	if manyRec.Code != 200 {
+		t.Fatalf("multi-page status = %d, want 200", manyRec.Code)
+	}
+	if !strings.Contains(manyRec.Body.String(), `id="float-page-num"`) {
+		t.Fatalf("multi-page result should render right pagination: %s", manyRec.Body.String())
+	}
+}
+
 func TestAppJSIncludesAjaxNavigationEntryPoints(t *testing.T) {
 	content, err := templateFS.ReadFile("templates/static/js/app.js")
 	if err != nil {
@@ -177,6 +211,11 @@ func TestAppJSIncludesAjaxNavigationEntryPoints(t *testing.T) {
 		"function rememberPlaybackHistory(audio)",
 		"rememberPlaybackHistory(audio);",
 		"const PLAYBACK_HISTORY_STORAGE_KEY = \"musicdl:playback-history\";",
+		"const PLAYBACK_HISTORY_PAGE_SIZE = 10;",
+		"const DOWNLOAD_RECORDS_PAGE_SIZE = 20;",
+		"const DUPLICATE_GROUP_PAGE_SIZE = 10;",
+		"function renderUtilityModalPagination(page, totalPages, onPageChange)",
+		"loadDownloadRecordsPage",
 		"modal-overlay utility-modal-overlay is-open",
 	} {
 		if !strings.Contains(js, want) {
@@ -201,10 +240,24 @@ func TestUtilityModalsShareCompactStructure(t *testing.T) {
 		`id="playbackHistoryModal" class="modal-overlay utility-modal-overlay"`,
 		`class="modal utility-modal playback-history-modal"`,
 		`id="playback-history-list" class="utility-modal-list playback-history-list"`,
+		`id="download-records-pagination" class="utility-modal-pagination"`,
+		`id="playback-history-pagination" class="utility-modal-pagination"`,
 	} {
 		if !strings.Contains(modals, want) {
 			t.Fatalf("modals.html missing %q", want)
 		}
+	}
+}
+
+func TestAjaxNavigationRefreshesRightToolbarMarkup(t *testing.T) {
+	content, err := templateFS.ReadFile("templates/static/js/app.js")
+	if err != nil {
+		t.Fatalf("ReadFile(app.js): %v", err)
+	}
+
+	js := string(content)
+	if !strings.Contains(js, "currentToolbar.replaceWith(nextToolbar.cloneNode(true));") {
+		t.Fatal("AJAX navigation must replace the existing right toolbar so conditional pagination markup stays in sync")
 	}
 }
 

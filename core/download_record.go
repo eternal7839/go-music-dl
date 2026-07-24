@@ -97,12 +97,33 @@ func cleanDownloadRecordText(value string) string {
 
 // GetDownloadRecords returns the most recent 200 user-visible download records.
 func GetDownloadRecords() ([]DownloadRecord, error) {
+	records, _, err := GetDownloadRecordPage(1, 200)
+	return records, err
+}
+
+// GetDownloadRecordPage returns one page of user-visible download records and
+// the total number of records available for pagination.
+func GetDownloadRecordPage(page, pageSize int) ([]DownloadRecord, int64, error) {
 	if err := initDownloadRecordTable(); err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+	if page < 1 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+
+	var total int64
+	if err := configDB.Model(&DownloadRecord{}).Count(&total).Error; err != nil {
+		return nil, 0, err
 	}
 	var records []DownloadRecord
-	err := configDB.Order("created_at DESC").Limit(200).Find(&records).Error
-	return records, err
+	err := configDB.Order("created_at DESC, id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&records).Error
+	return records, total, err
 }
 
 // ClearDownloadRecords clears only the history displayed in the UI. The durable
