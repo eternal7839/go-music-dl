@@ -246,8 +246,8 @@ func renderIndex(c *gin.Context, songs []model.Song, playlists []model.Playlist,
 			pageSize = n
 		}
 	}
-	if pageSize > 200 {
-		pageSize = 200
+	if pageSize > 500 {
+		pageSize = 500
 	}
 
 	page := 1
@@ -448,7 +448,7 @@ func StartWithOptions(port string, opts StartOptions) {
 		c.JSON(200, core.GetWebSettings())
 	})
 
-	RegisterMusicRoutes(api)
+	RegisterMusicRoutes(api, configAPI)
 	RegisterQRLoginRoutes(configAPI)
 	RegisterCollectionRoutes(api)
 	RegisterLocalMusicRoutes(api)

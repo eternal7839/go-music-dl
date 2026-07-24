@@ -349,7 +349,21 @@ func playlistCategoryPlaylistsURL(source string, category model.PlaylistCategory
 	return RoutePrefix + "/category_playlists?" + values.Encode()
 }
 
-func RegisterMusicRoutes(api *gin.RouterGroup) {
+// writeClipResultsFile 将导入歌曲片段的结果写入 片断解析.txt
+func writeClipResultsFile(result *core.ClipImportResult) {
+	if result == nil {
+		return
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("总行数: %d  已匹配: %d\n\n", result.Total, result.Matched))
+	for _, song := range result.Songs {
+		sb.WriteString(fmt.Sprintf("✅ %s - %s  (%s)\n", song.Artist, song.Name, song.Source))
+	}
+	path := filepath.Join(core.DataDir(), "片断解析.txt")
+	_ = os.WriteFile(path, []byte(sb.String()), 0644)
+}
+
+func RegisterMusicRoutes(api, configAPI *gin.RouterGroup) {
 
 	api.GET("/", func(c *gin.Context) {
 		renderIndex(c, nil, nil, "", nil, "", "song", "", "", "", false, "", nil)
@@ -829,7 +843,10 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		tempSong := &model.Song{ID: id, Source: source, Name: name, Artist: artist, Album: album, Cover: coverURL, Extra: extra}
 
 		if saveLocal {
-			result, err := core.SaveSongToFileWithTemplate(tempSong, settings.DownloadDir, embedMeta, embedMeta, settings.DownloadFilenameTemplate)
+			// 加载去重集合（成功解析.txt + 下载记录.txt）
+			allSongsSet, _ := core.LoadDownloadDedupSet()
+
+			result, err := core.DownloadWithDedupCheckWithTemplate(tempSong, settings.DownloadDir, embedMeta, embedMeta, settings.DownloadFilenameTemplate, allSongsSet)
 			if err != nil {
 				c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 				return
@@ -840,6 +857,7 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 				"saved":    true,
 				"path":     result.SavedPath,
 				"filename": result.Filename,
+				"skipped":  result.Skipped,
 			}
 			if result.Warning != "" {
 				payload["warning"] = result.Warning
@@ -1092,6 +1110,130 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 			}
 		}
 		c.String(200, "[00:00.00] 纯音乐 / 无歌词")
+	})
+
+	// 下载记录 API
+	api.GET("/api/downloads/records", func(c *gin.Context) {
+		records, err := core.GetDownloadRecords()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if records == nil {
+			records = []core.DownloadRecord{}
+		}
+		c.JSON(200, gin.H{"records": records})
+	})
+
+	configAPI.DELETE("/api/downloads/records", func(c *gin.Context) {
+		if err := core.ClearDownloadRecords(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
+	// 下载预检：统计待下载队列中有多少首将跳过
+	api.POST("/api/downloads/precheck", func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 20<<20) // 20MB
+		var req struct {
+			Songs []struct {
+				Name   string `json:"name"`
+				Artist string `json:"artist"`
+			} `json:"songs"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
+			return
+		}
+		if len(req.Songs) > 20000 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "歌曲数量不能超过 20000"})
+			return
+		}
+		for _, s := range req.Songs {
+			if len(s.Name) > 500 || len(s.Artist) > 500 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "歌曲名或歌手名长度不能超过 500 字符"})
+				return
+			}
+		}
+
+		dedupSet, err := core.LoadDownloadDedupSet()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		skipCount := 0
+		for _, s := range req.Songs {
+			song := &model.Song{Name: s.Name, Artist: s.Artist}
+			if core.IsSongDownloaded(song, dedupSet) {
+				skipCount++
+			}
+		}
+		c.JSON(200, gin.H{"total": len(req.Songs), "skipped": skipCount})
+	})
+
+	// 导入已有曲库（仅接受 fileContent 上传，不接受 filePath 以防路径遍历）
+	configAPI.POST("/api/downloads/import", func(c *gin.Context) {
+		var req struct {
+			FileContent string `json:"fileContent"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
+			return
+		}
+
+		if req.FileContent == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请选择文件上传"})
+			return
+		}
+
+		result, err := core.ImportDirectoryListingFromContent(req.FileContent)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, result)
+	})
+
+	// 重置下载日志文件
+	configAPI.DELETE("/api/downloads/logs", func(c *gin.Context) {
+		var files = []string{"下载记录.txt", "跳过下载.txt", "下载失败.txt"}
+		var errs []string
+		for _, f := range files {
+			if err := core.ClearLogFile(f); err != nil {
+				errs = append(errs, f+": "+err.Error())
+			}
+		}
+		if len(errs) > 0 {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": strings.Join(errs, "; ")})
+			return
+		}
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
+	// 导入歌曲片段 — 搜索完整版
+	api.POST("/api/songs/import-clips", func(c *gin.Context) {
+		var req struct {
+			FileContent string   `json:"fileContent"`
+			Sources     []string `json:"sources"`
+			Threshold   float64  `json:"threshold"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil || req.FileContent == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "请选择文件"})
+			return
+		}
+
+		result, err := core.ImportSongClips(req.FileContent, req.Sources, req.Threshold, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// 后台写入 片断解析.txt
+		go writeClipResultsFile(result)
+
+		c.JSON(200, result)
 	})
 }
 
